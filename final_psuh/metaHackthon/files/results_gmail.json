@@ -1,0 +1,153 @@
+{
+  "model": "gpt-4o-mini",
+  "api_base": "https://api.openai.com/v1",
+  "email_source": "Gmail API",
+  "task": "task3",
+  "result": {
+    "task_id": "task3",
+    "grader_score": 0.94,
+    "total_reward": 8.939999999999998,
+    "steps_taken": 30,
+    "episode_log": [
+      {
+        "email_id": "19d7b53553f8713b",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d777c122763888",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d7367d6c81b9ab",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d728c3d886032f",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d7281933d1e4d1",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d725523c08de26",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d6d5b3df387a96",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d6b12fd2a248d4",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d60ecc80de5d3b",
+        "reward": 0.7999999999999999
+      },
+      {
+        "email_id": "19d5cdd2697314fd",
+        "reward": 0.7999999999999999
+      }
+    ],
+    "breakdown": {
+      "total_emails": 10,
+      "classification_accuracy": 1.0,
+      "priority_accuracy": 1.0,
+      "reply_quality": 0.8,
+      "details": {
+        "19d7b53553f8713b": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d777c122763888": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d7367d6c81b9ab": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d728c3d886032f": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d7281933d1e4d1": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d725523c08de26": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d6d5b3df387a96": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d6b12fd2a248d4": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d60ecc80de5d3b": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        },
+        "19d5cdd2697314fd": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "medium",
+          "expected_priority": "medium",
+          "priority_score": 1.0,
+          "reply_score": 0.8
+        }
+      }
+    }
+  },
+  "elapsed_seconds": 140.76
+}

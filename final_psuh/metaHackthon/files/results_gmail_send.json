@@ -1,0 +1,115 @@
+{
+  "model": "openrouter/auto",
+  "api_base": "https://openrouter.ai/api/v1",
+  "email_source": "Gmail API",
+  "task": "task3",
+  "auto_send_enabled": true,
+  "result": {
+    "task_id": "task3",
+    "grader_score": 0.413,
+    "total_reward": 5.212999999999999,
+    "steps_taken": 15,
+    "episode_log": [
+      {
+        "email_id": "19d7bc6eb3f1f2be",
+        "reward": 1.0
+      },
+      {
+        "email_id": "19d7b818c476e244",
+        "reward": 1.0
+      },
+      {
+        "email_id": "19d7b7c10e12f23a",
+        "reward": 1.0
+      },
+      {
+        "email_id": "19d7b766b14adf54",
+        "reward": 1.0
+      },
+      {
+        "email_id": "19d7b53553f8713b",
+        "reward": 0.7999999999999999
+      }
+    ],
+    "breakdown": {
+      "total_emails": 5,
+      "classification_accuracy": 0.2,
+      "priority_accuracy": 0.5,
+      "reply_quality": 0.56,
+      "details": {
+        "19d7bc6eb3f1f2be": {
+          "predicted_classification": "important",
+          "expected_classification": "normal",
+          "classification_score": 0.0,
+          "predicted_priority": "high",
+          "expected_priority": "medium",
+          "priority_score": 0.5,
+          "reply_score": 0.5
+        },
+        "19d7b818c476e244": {
+          "predicted_classification": "important",
+          "expected_classification": "normal",
+          "classification_score": 0.0,
+          "predicted_priority": "high",
+          "expected_priority": "medium",
+          "priority_score": 0.5,
+          "reply_score": 0.5
+        },
+        "19d7b7c10e12f23a": {
+          "predicted_classification": "important",
+          "expected_classification": "normal",
+          "classification_score": 0.0,
+          "predicted_priority": "high",
+          "expected_priority": "medium",
+          "priority_score": 0.5,
+          "reply_score": 0.5
+        },
+        "19d7b766b14adf54": {
+          "predicted_classification": "important",
+          "expected_classification": "normal",
+          "classification_score": 0.0,
+          "predicted_priority": "high",
+          "expected_priority": "medium",
+          "priority_score": 0.5,
+          "reply_score": 0.5
+        },
+        "19d7b53553f8713b": {
+          "predicted_classification": "normal",
+          "expected_classification": "normal",
+          "classification_score": 1.0,
+          "predicted_priority": "low",
+          "expected_priority": "medium",
+          "priority_score": 0.5,
+          "reply_score": 0.8
+        }
+      }
+    },
+    "send_log": [
+      {
+        "email_id": "19d7b818c476e244",
+        "recipient": "recipient1@example.com",
+        "sent": true,
+        "reply_length": 364
+      },
+      {
+        "email_id": "19d7b7c10e12f23a",
+        "recipient": "recipient1@example.com",
+        "sent": true,
+        "reply_length": 364
+      },
+      {
+        "email_id": "19d7b766b14adf54",
+        "recipient": "User Two <user2@example.com>",
+        "sent": true,
+        "reply_length": 627
+      },
+      {
+        "email_id": "19d7b53553f8713b",
+        "recipient": "Google <no-reply@accounts.google.com>",
+        "sent": true,
+        "reply_length": 201
+      }
+    ]
+  },
+  "elapsed_seconds": 17.84
+}

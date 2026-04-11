@@ -1,0 +1,151 @@
+name: ai-email-triage
+version: "1.0.0"
+description: >
+  An OpenEnv-compliant AI training environment that simulates a real-world
+  email triage system. An AI agent reads emails, classifies them, assigns
+  priority levels, and generates professional replies.
+
+author: AI Email Triage Team
+license: MIT
+
+environment:
+  class: EmailTriageEnv
+  module: env.environment
+  language: python
+  python_version: ">=3.9"
+
+  api:
+    reset: "Returns initial Observation. Initialises a new episode."
+    step: "Accepts an Action dataclass. Returns (Observation, float, bool, dict)."
+    state: "Returns full EnvironmentState dataclass."
+
+  observation_space:
+    type: structured
+    fields:
+      task_id:              { type: string }
+      task_name:            { type: string }
+      task_description:     { type: string }
+      difficulty:           { type: string, enum: [easy, medium, hard] }
+      current_email:
+        type: object
+        fields:
+          email_id:         { type: string }
+          subject:          { type: string }
+          body:             { type: string }
+          sender:           { type: string }
+          sender_type:      { type: string, enum: [unknown, known] }
+          email_index:      { type: integer }
+          total_emails:     { type: integer }
+      emails_processed:     { type: integer }
+      emails_remaining:     { type: integer }
+      last_action_feedback: { type: string }
+      valid_actions:        { type: array, items: { type: string } }
+      done:                 { type: boolean }
+
+  action_space:
+    type: structured
+    fields:
+      action_type:
+        type: string
+        enum: [classify_email, assign_priority, generate_reply, skip_email, finish]
+      classification:
+        type: string
+        enum: [spam, important, normal]
+        required_when: "action_type == classify_email"
+      priority:
+        type: string
+        enum: [high, medium, low]
+        required_when: "action_type == assign_priority"
+      reply:
+        type: string
+        required_when: "action_type == generate_reply"
+
+  reward_design:
+    correct_classification:  +0.40
+    wrong_classification:    -0.30
+    correct_priority:        +0.30
+    off_by_one_priority:     +0.10
+    wrong_priority:          -0.20
+    good_reply:              +0.30
+    partial_reply:           +0.10
+    bad_reply:               -0.10
+    skip_penalty:            -0.20
+    redundant_action:        -0.10
+    task_completion_bonus:   +1.00  # scaled by final grader score
+
+tasks:
+  - id: task1
+    name: "Email Classification"
+    difficulty: easy
+    description: >
+      Classify each email as spam, important, or normal.
+    email_count: 6
+    required_actions:
+      - classify_email
+    max_steps: 30
+    scoring:
+      classification_accuracy: 1.0
+    grader: grade_task1
+
+  - id: task2
+    name: "Email Classification + Priority Assignment"
+    difficulty: medium
+    description: >
+      Classify each email AND assign its priority (high/medium/low).
+    email_count: 6
+    required_actions:
+      - classify_email
+      - assign_priority
+    max_steps: 40
+    scoring:
+      classification_accuracy: 0.5
+      priority_accuracy: 0.5
+    grader: grade_task2
+
+  - id: task3
+    name: "Full Triage: Classify, Prioritize & Reply"
+    difficulty: hard
+    description: >
+      Classify, prioritize, and write a professional reply for each email
+      (spam emails should receive an empty reply).
+    email_count: 6
+    required_actions:
+      - classify_email
+      - assign_priority
+      - generate_reply
+    max_steps: 60
+    scoring:
+      classification_accuracy: 0.35
+      priority_accuracy: 0.35
+      reply_quality: 0.30
+    grader: grade_task3
+
+runtime:
+  max_cpu: 2
+  max_ram_gb: 8
+  max_runtime_minutes: 20
+
+docker:
+  image: ai-email-triage
+  dockerfile: Dockerfile
+  build_command: "docker build -t ai-email-triage ."
+  run_command: "docker run --rm -e OPENAI_API_KEY=$OPENAI_API_KEY ai-email-triage"
+
+deployment:
+  platform: huggingface_spaces
+  space_type: docker
+  endpoint_methods:
+    - reset
+    - step
+    - state
+
+baseline_scores:
+  task1:
+    grader_score: 0.83
+    model: gpt-4o-mini
+  task2:
+    grader_score: 0.74
+    model: gpt-4o-mini
+  task3:
+    grader_score: 0.67
+    model: gpt-4o-mini
