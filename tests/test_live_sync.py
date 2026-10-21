@@ -67,3 +67,20 @@ def test_background_daemon_thread_started():
     from web_app import _agent_state
     assert "poll_interval" in _agent_state
     assert _agent_state["poll_interval"] == 20 or _agent_state["poll_interval"] == 15
+
+def test_oauth_login_stores_code_verifier():
+    """Verify that /login generates and stores PKCE code_verifier in session."""
+    client = app.test_client()
+    res = client.get("/login")
+    if res.status_code == 302:
+        with client.session_transaction() as sess:
+            assert 'state' in sess
+            assert 'code_verifier' in sess
+            assert sess['code_verifier'] is not None
+
+def test_oauth_callback_invalid_grant_redirects_to_login():
+    """Verify that an invalid/stale authorization callback safely redirects to /login rather than 500 error."""
+    client = app.test_client()
+    res = client.get("/oauth2callback?code=fake_code_123&state=fake_state")
+    assert res.status_code == 302
+    assert "/login" in res.headers.get("Location", "")

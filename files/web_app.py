@@ -1675,19 +1675,33 @@ def login():
         include_granted_scopes='true'
     )
     session['state'] = state
+    session['code_verifier'] = flow.code_verifier
     return redirect(auth_url)
 
 
 @app.route("/oauth2callback")
 def oauth2callback():
     state = session.get('state')
-    flow = Flow.from_client_secrets_file(
-        CLIENT_SECRETS_FILE,
-        scopes=SCOPES,
-        state=state,
-        redirect_uri=url_for('oauth2callback', _external=True)
-    )
-    flow.fetch_token(authorization_response=request.url)
+    code_verifier = session.get('code_verifier')
+
+    flow_kwargs = {
+        'scopes': SCOPES,
+        'state': state,
+        'redirect_uri': url_for('oauth2callback', _external=True)
+    }
+    if code_verifier:
+        flow_kwargs['code_verifier'] = code_verifier
+
+    flow = Flow.from_client_secrets_file(CLIENT_SECRETS_FILE, **flow_kwargs)
+    if code_verifier:
+        flow.code_verifier = code_verifier
+
+    try:
+        flow.fetch_token(authorization_response=request.url)
+    except Exception as e:
+        print(f"OAuth token exchange notice: {e}")
+        # Cleanly restart login flow if auth code or code_verifier was stale
+        return redirect(url_for('login'))
 
     credentials = flow.credentials
     session['credentials'] = {
