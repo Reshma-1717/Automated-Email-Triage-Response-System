@@ -16,7 +16,10 @@ app.secret_key = "change-this-to-random-string-123"
 app.permanent_session_lifetime = timedelta(hours=24)
 os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
 
-# ── Persistent SQLite DB ────────────────────────────────────────────────────
+# ── Owner / Platform Admin Configuration ────────────────────────────────────
+OWNER_EMAIL = os.getenv("OWNER_EMAIL", "reshmakodavali@gmail.com").strip().lower()
+
+# ── Persistent SQLite DB (Multi-Tenant) ────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(__file__), "aura_stats.db")
 
 def _db():
@@ -26,18 +29,41 @@ def _db():
 
 def _init_db():
     with _db() as conn:
+        # Multi-user accounts table
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS processed_emails (
-                id          TEXT PRIMARY KEY,
-                subject     TEXT,
-                sender      TEXT,
-                received_at TEXT,
-                classification TEXT,
-                priority    TEXT,
-                reply_sent  INTEGER DEFAULT 0,
-                reply_text  TEXT DEFAULT ''
+            CREATE TABLE IF NOT EXISTS users (
+                email        TEXT PRIMARY KEY,
+                name         TEXT,
+                picture      TEXT,
+                role         TEXT DEFAULT 'user',
+                reply_mode   TEXT DEFAULT 'draft',
+                signature    TEXT DEFAULT '',
+                connected_at TEXT,
+                last_active  TEXT
             )
         """)
+        # Multi-tenant processed emails table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS processed_emails (
+                id             TEXT PRIMARY KEY,
+                user_email     TEXT DEFAULT '',
+                subject        TEXT,
+                sender         TEXT,
+                received_at    TEXT,
+                classification TEXT,
+                priority       TEXT,
+                reply_sent     INTEGER DEFAULT 0,
+                reply_text     TEXT DEFAULT '',
+                status         TEXT DEFAULT 'completed'
+            )
+        """)
+        # Graceful migration for existing table
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(processed_emails)").fetchall()]
+        if "user_email" not in cols:
+            conn.execute("ALTER TABLE processed_emails ADD COLUMN user_email TEXT DEFAULT ''")
+        if "status" not in cols:
+            conn.execute("ALTER TABLE processed_emails ADD COLUMN status TEXT DEFAULT 'completed'")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_processed_emails_user ON processed_emails (user_email, received_at)")
         conn.commit()
 
 _init_db()
@@ -47,36 +73,39 @@ _LLM_API_KEY  = os.getenv("OPENAI_API_KEY", "")
 _LLM_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 _LLM_MODEL    = os.getenv("MODEL_NAME", "gpt-4o-mini")
 
-_TRIAGE_SYSTEM_PROMPT = """You are an AI email assistant for Reshma Kodavali. Analyse each email and respond with JSON only.
+def _build_triage_prompt(user_name: str = "User", signature: str = None) -> str:
+    """Dynamically personalizes prompt for any connected user, eliminating hardcoded names."""
+    sig = signature if signature else user_name
+    return f"""You are an intelligent executive AI email assistant for {user_name}. Analyse each email and respond with JSON only.
 
 You must return exactly this JSON structure:
-{
+{{
   "classification": "spam" | "important" | "normal",
   "priority": "high" | "medium" | "low",
   "needs_reply": true | false,
   "reply": "<reply text or empty string>"
-}
+}}
 
 Classification rules:
 - "spam": phishing, scams, fake security alerts, unsolicited promotions, mass marketing, any email trying to trick or manipulate
-- "important": a real human personally addressing Reshma, needs her action or response
+- "important": a real human personally addressing {user_name}, needs an action or personal response
 - "normal": newsletters, job board alerts, platform notifications, automated digests — even if from a known company
 
 Priority rules:
-- "high": deadline, interview, urgent personal request, offer, result
+- "high": deadline, interview, urgent personal request, offer, critical action
 - "medium": needs attention within a few days
-- "low": informational, newsletters, spam
+- "low": informational, newsletters, notifications
 
 Reply rules — be strict:
-- needs_reply: true ONLY when a real human wrote this personally to Reshma and expects a response
-- needs_reply: false for ALL of: spam, phishing, newsletters, job alerts, platform emails, no-reply senders, bulk mail, security notices, anything automated
+- needs_reply: true ONLY when a real human wrote this personally to {user_name} and expects a personal response
+- needs_reply: false for ALL of: spam, phishing, newsletters, job alerts, platform emails, no-reply senders, bulk mail, security notices, automated notifications
 - If is_automated=true or is_bulk=true in the context, ALWAYS set needs_reply: false
 - If needs_reply is false, reply must be empty string ""
-- If needs_reply is true, write a short warm reply (under 80 words) as Reshma, signed "Reshma"
+- If needs_reply is true, write a short, professional, warm reply (under 80 words) as {user_name}, signed "{sig}"
 
 Respond with valid JSON only. No markdown, no explanation."""
 
-def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bulk: bool) -> dict:
+def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bulk: bool, user_name: str = "User", signature: str = None) -> dict:
     """Single LLM call that classifies, sets priority, decides reply, and writes it."""
     fallback = {
         "classification": "normal",
@@ -89,6 +118,7 @@ def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bul
         return fallback
     try:
         client = _openai.OpenAI(api_key=_LLM_API_KEY, base_url=_LLM_BASE_URL)
+        prompt = _build_triage_prompt(user_name=user_name, signature=signature)
         user_msg = (
             f"Context: is_automated={is_automated}, is_bulk={is_bulk}\n\n"
             f"Subject: {subject}\n"
@@ -98,7 +128,7 @@ def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bul
         resp = client.chat.completions.create(
             model=_LLM_MODEL,
             messages=[
-                {"role": "system", "content": _TRIAGE_SYSTEM_PROMPT},
+                {"role": "system", "content": prompt},
                 {"role": "user",   "content": user_msg}
             ],
             temperature=0.0,
@@ -117,7 +147,11 @@ def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bul
 
 SCOPES = [
     'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/gmail.send'
+    'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.compose',
+    'https://www.googleapis.com/auth/userinfo.profile',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'openid'
 ]
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRETS_FILE = os.path.join(_APP_DIR, "credentials.json") if os.path.exists(os.path.join(_APP_DIR, "credentials.json")) else "credentials.json"
@@ -134,7 +168,7 @@ _agent_state = {
 _agent_lock = threading.Lock()
 
 
-def _process_inbox(creds_dict: dict, connected_at: int):
+def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, reply_mode: str = "draft"):
     """Core processing logic — fetch new emails, triage, reply, save to DB."""
     from google.oauth2.credentials import Credentials as _Creds
     from googleapiclient.discovery import build as _build
@@ -142,7 +176,23 @@ def _process_inbox(creds_dict: dict, connected_at: int):
     creds   = _Creds(**creds_dict)
     service = _build('gmail', 'v1', credentials=creds)
 
-    OWN_EMAIL_ADDRESSES = ["reshmakodavali@gmail.com", "23bq1a4281"]
+    user_info = user_info or {}
+    user_email = user_info.get("email", "").lower()
+    user_name  = user_info.get("name") or (user_email.split("@")[0].capitalize() if user_email else "User")
+    signature  = user_info.get("signature") or user_name
+
+    # Discover own address dynamically from profile if not supplied
+    if not user_email:
+        try:
+            prof = service.users().getProfile(userId='me').execute()
+            user_email = prof.get('emailAddress', '').lower()
+            if user_name == "User" and user_email:
+                user_name = user_email.split("@")[0].capitalize()
+                signature = user_name
+        except Exception:
+            pass
+
+    OWN_EMAIL_ADDRESSES = [user_email] if user_email else []
 
     NO_REPLY_PATTERNS = [
         "no-reply@", "noreply@", "mailer-daemon@", "postmaster@",
@@ -227,20 +277,21 @@ def _process_inbox(creds_dict: dict, connected_at: int):
             with _db() as conn:
                 conn.execute("""
                     INSERT INTO processed_emails
-                      (id, subject, sender, received_at, classification, priority, reply_sent, reply_text)
-                    VALUES (?, ?, ?, ?, 'pending', 'pending', 0, '')
-                """, (msg_id, subject[:120], sender[:120], datetime.now().isoformat(timespec='seconds')))
+                      (id, user_email, subject, sender, received_at, classification, priority, reply_sent, reply_text, status)
+                    VALUES (?, ?, ?, ?, ?, 'pending', 'pending', 0, '', 'processing')
+                """, (msg_id, user_email, subject[:120], sender[:120], datetime.now().isoformat(timespec='seconds')))
                 conn.commit()
         except sqlite3.IntegrityError:
             # Another run already claimed this email — skip entirely
             continue
 
-        triage      = _llm_triage(subject, sender, body, is_auto, is_bulk)
+        triage      = _llm_triage(subject, sender, body, is_auto, is_bulk, user_name=user_name, signature=signature)
         classif     = triage.get("classification", "normal")
         priority    = triage.get("priority", "low")
         needs_reply = triage.get("needs_reply", False)
         reply_text  = triage.get("reply", "")
         reply_sent  = False
+        status_action = "classified"
 
         if needs_reply and reply_text:
             try:
@@ -252,24 +303,35 @@ def _process_inbox(creds_dict: dict, connected_at: int):
                     message['In-Reply-To'] = mid
                     message['References']  = mid
                 raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-                service.users().messages().send(
-                    userId='me', body={'raw': raw, 'threadId': thread_id}
-                ).execute()
-                reply_sent = True
+                
+                if reply_mode == "send":
+                    service.users().messages().send(
+                        userId='me', body={'raw': raw, 'threadId': thread_id}
+                    ).execute()
+                    reply_sent = True
+                    status_action = "sent"
+                else: # Default safe mode: save as draft in Gmail for review
+                    service.users().drafts().create(
+                        userId='me', body={'message': {'raw': raw, 'threadId': thread_id}}
+                    ).execute()
+                    reply_sent = True
+                    status_action = "drafted"
             except Exception:
                 reply_sent = False
+                status_action = "error"
 
-        # Finalize the claimed row with real results (UPDATE, not INSERT —
-        # the row already exists from the claim step above)
+        # Finalize the claimed row with real results
         with _db() as conn:
             conn.execute("""
                 UPDATE processed_emails
-                SET classification = ?, priority = ?, reply_sent = ?, reply_text = ?
-                WHERE id = ?
+                SET classification = ?, priority = ?, reply_sent = ?, reply_text = ?, status = ?
+                WHERE id = ? AND (user_email = ? OR user_email = '')
             """, (
                 classif, priority, int(reply_sent),
                 reply_text if reply_sent else "",
-                msg_id
+                status_action,
+                msg_id,
+                user_email
             ))
             conn.commit()
 
@@ -1168,11 +1230,23 @@ DASHBOARD_PAGE = """
 
             <div class="sidebar-spacer"></div>
 
+            {% if is_owner %}
+            <div style="margin-bottom: 14px;">
+                <a href="/admin" class="nav-item" style="color:var(--gold);background:rgba(201,169,110,0.08);border:1px solid rgba(201,169,110,0.3);text-decoration:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:4px;font-size:12px;font-weight:500;">
+                    <span>👑</span> Owner Command Center
+                </a>
+            </div>
+            {% endif %}
+
             <div class="sidebar-user">
-                <div class="user-avatar">G</div>
+                {% if user.picture %}
+                <img src="{{ user.picture }}" alt="{{ user.name }}" class="user-avatar" style="object-fit:cover;border:1px solid rgba(201,169,110,0.3);">
+                {% else %}
+                <div class="user-avatar">{{ (user.name or user.email or 'U')[0].upper() }}</div>
+                {% endif %}
                 <div class="user-info">
-                    <div class="user-name">Gmail Account</div>
-                    <div class="user-status">Connected</div>
+                    <div class="user-name" title="{{ user.email }}">{{ user.name or 'My Account' }}</div>
+                    <div class="user-status" style="font-size:10.5px;">{{ '👑 Platform Owner' if is_owner else 'Connected' }}</div>
                 </div>
                 <a href="/disconnect" class="disconnect-btn" title="Disconnect">✕</a>
             </div>
@@ -1414,6 +1488,332 @@ DASHBOARD_PAGE = """
 </html>
 """
 
+
+ADMIN_PAGE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Owner Command Center — Aura</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --gold: #C9A96E;
+            --gold-light: #E8D5B0;
+            --ink: #0A0A0A;
+            --ink-2: #111111;
+            --surface: #141414;
+            --surface-2: #1E1E1E;
+            --surface-3: #252525;
+            --border: rgba(201,169,110,0.15);
+            --text-primary: #F0EDE8;
+            --text-secondary: #9A9189;
+            --text-muted: #5C5650;
+            --green: #4ADE80;
+            --red: #F87171;
+            --amber: #FBBF24;
+        }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--ink);
+            color: var(--text-primary);
+            min-height: 100vh;
+            padding: 32px 48px;
+        }
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding-bottom: 24px;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 32px;
+        }
+        .header-title {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 32px;
+            font-weight: 500;
+            letter-spacing: 0.04em;
+        }
+        .header-title span { color: var(--gold); }
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        .btn {
+            padding: 8px 16px;
+            border-radius: 3px;
+            font-size: 13px;
+            text-decoration: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            background: var(--surface);
+        }
+        .btn-gold {
+            background: var(--gold);
+            color: var(--ink);
+            font-weight: 500;
+            border-color: var(--gold);
+        }
+        .btn:hover { opacity: 0.9; }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 36px;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 24px;
+            border-radius: 4px;
+        }
+        .stat-label {
+            font-size: 10px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+        }
+        .stat-val {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 38px;
+            font-weight: 500;
+            color: var(--gold);
+        }
+        .stat-sub {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        /* Section Cards */
+        .card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            margin-bottom: 32px;
+            overflow: hidden;
+        }
+        .card-header {
+            padding: 18px 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card-title {
+            font-family: 'Cormorant Garamond', serif;
+            font-size: 20px;
+            font-weight: 500;
+        }
+        .badge {
+            font-size: 9px;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            padding: 3px 8px;
+            border-radius: 2px;
+        }
+        .badge-owner { background: rgba(201,169,110,0.15); color: var(--gold); border: 1px solid rgba(201,169,110,0.3); }
+        .badge-user { background: rgba(255,255,255,0.06); color: var(--text-secondary); border: 1px solid var(--border); }
+        .badge-green { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12.5px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 20px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.14em;
+            color: var(--text-muted);
+            border-bottom: 1px solid var(--border);
+            background: var(--ink-2);
+        }
+        td {
+            padding: 14px 20px;
+            border-bottom: 1px solid rgba(201,169,110,0.08);
+            color: var(--text-primary);
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: rgba(255,255,255,0.015); }
+        .user-cell {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .avatar-sm {
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            background: rgba(201,169,110,0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            color: var(--gold);
+            font-weight: 600;
+        }
+        .mono { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-secondary); }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div>
+            <div class="header-title">A<span>u</span>ra — Owner Command Center</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+                Administrator Portal  •  Connected as Owner: <span style="color:var(--gold);">{{ owner.email }}</span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <a href="/dashboard" class="btn btn-gold">← Return to My Dashboard</a>
+            <a href="/disconnect" class="btn">Log Out</a>
+        </div>
+    </header>
+
+    <!-- Global Metrics Grid -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Total Registered Users</div>
+            <div class="stat-val">{{ total_users }}</div>
+            <div class="stat-sub">Accounts connected</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Platform Emails Triaged</div>
+            <div class="stat-val">{{ total_emails }}</div>
+            <div class="stat-sub">Across all user inboxes</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">AI Replies Generated</div>
+            <div class="stat-val">{{ total_replies }}</div>
+            <div class="stat-sub">Automated drafts & sends</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Spam Blocked</div>
+            <div class="stat-val">{{ total_spam }}</div>
+            <div class="stat-sub">Malicious & phishing emails</div>
+        </div>
+    </div>
+
+    <!-- Registered Users Table -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Registered Users Directory</div>
+            <span class="badge badge-green">{{ users|length }} Active Accounts</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Email Address</th>
+                    <th>Role</th>
+                    <th>Reply Safety Mode</th>
+                    <th>Joined</th>
+                    <th>Last Active</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for u in users %}
+                <tr>
+                    <td>
+                        <div class="user-cell">
+                            {% if u.picture %}
+                            <img src="{{ u.picture }}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">
+                            {% else %}
+                            <div class="avatar-sm">{{ (u.name or u.email or 'U')[0].upper() }}</div>
+                            {% endif %}
+                            <span style="font-weight:500;">{{ u.name or 'Anonymous User' }}</span>
+                        </div>
+                    </td>
+                    <td class="mono">{{ u.email }}</td>
+                    <td>
+                        {% if u.role == 'owner' or u.email == owner.email %}
+                        <span class="badge badge-owner">👑 Owner</span>
+                        {% else %}
+                        <span class="badge badge-user">User</span>
+                        {% endif %}
+                    </td>
+                    <td><span class="mono">{{ u.reply_mode or 'draft' }}</span></td>
+                    <td class="mono">{{ (u.connected_at or '—')[:16] }}</td>
+                    <td class="mono">{{ (u.last_active or '—')[:16] }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);">No users registered yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Live Platform Activity Stream -->
+    <div class="card">
+        <div class="card-header">
+            <div class="card-title">Live Platform Activity Stream</div>
+            <span style="font-size:11px;color:var(--text-muted);font-family:'DM Mono',monospace;">Last 15 triage actions platform-wide</span>
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Sender</th>
+                    <th>Subject</th>
+                    <th>Classification</th>
+                    <th>Priority</th>
+                    <th>Reply Action</th>
+                    <th>Time</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for act in activity %}
+                <tr>
+                    <td class="mono" style="color:var(--gold);">{{ act.user_email }}</td>
+                    <td class="mono">{{ (act.sender or '')[:28] }}</td>
+                    <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ act.subject }}</td>
+                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">{{ act.classification }}</span></td>
+                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">{{ act.priority }}</span></td>
+                    <td>
+                        {% if act.reply_sent %}
+                        <span class="badge badge-green">✓ {{ act.status or 'Replied' }}</span>
+                        {% else %}
+                        <span style="color:var(--text-muted);font-size:11px;">No reply</span>
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ (act.received_at or '')[:16] }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">No emails triaged yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- System Health -->
+    <div class="card" style="padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
+        <div>
+            <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Core Intelligence Engine</div>
+            <div style="font-size:13px;color:var(--gold);">LLM Model: {{ llm_model }}  •  Status: Operational (Ready for Public Traffic)</div>
+        </div>
+        <span class="badge badge-green">● All Systems Online</span>
+    </div>
+</body>
+</html>
+"""
+
 # ── Routes ─────────────────────────────────────────────────
 
 @app.route("/")
@@ -1465,7 +1865,52 @@ def callback():
     session['connected_at'] = connected_at
     session['seen_ids'] = []
 
-    # ── Activate the background agent ──
+    # ── Fetch user profile from Gmail & OAuth userinfo ──
+    user_email = ""
+    user_name  = ""
+    user_pic   = ""
+    try:
+        gmail_service = build('gmail', 'v1', credentials=creds)
+        prof = gmail_service.users().getProfile(userId='me').execute()
+        user_email = prof.get('emailAddress', '').lower()
+    except Exception as e:
+        print(f"Notice: Gmail profile fetch: {e}")
+
+    try:
+        oauth_service = build('oauth2', 'v2', credentials=creds)
+        uinfo = oauth_service.userinfo().get().execute()
+        user_name = uinfo.get('name') or uinfo.get('given_name') or ""
+        user_pic  = uinfo.get('picture', '')
+        if not user_email:
+            user_email = uinfo.get('email', '').lower()
+    except Exception:
+        pass
+
+    if not user_name and user_email:
+        user_name = user_email.split('@')[0].capitalize()
+
+    role = 'owner' if (user_email and user_email == OWNER_EMAIL) else 'user'
+    session['user'] = {
+        'email': user_email,
+        'name': user_name,
+        'picture': user_pic,
+        'role': role,
+        'reply_mode': 'draft'
+    }
+
+    # Register/update user record in database
+    with _db() as conn:
+        conn.execute("""
+            INSERT INTO users (email, name, picture, role, reply_mode, connected_at, last_active)
+            VALUES (?, ?, ?, ?, 'draft', datetime('now'), datetime('now'))
+            ON CONFLICT(email) DO UPDATE SET
+                name = excluded.name,
+                picture = excluded.picture,
+                last_active = datetime('now')
+        """, (user_email, user_name, user_pic, role))
+        conn.commit()
+
+    # ── Activate background agent ──
     with _agent_lock:
         _agent_state["credentials"]  = dict(session['credentials'])
         _agent_state["connected_at"] = connected_at
@@ -1479,49 +1924,157 @@ def dashboard():
     if 'credentials' not in session:
         return redirect(url_for('index'))
 
-    # Re-activate background agent if Flask restarted and lost in-memory state
-    # (session cookie survives restarts, but the _agent_state dict does not)
+    user = session.get('user')
+    if not user:
+        creds_dict = session.get('credentials', {})
+        user_email = ""
+        try:
+            from google.oauth2.credentials import Credentials as _C
+            c = _C(**creds_dict)
+            g = build('gmail', 'v1', credentials=c)
+            user_email = g.users().getProfile(userId='me').execute().get('emailAddress', '').lower()
+        except Exception:
+            pass
+        user = {
+            'email': user_email,
+            'name': user_email.split('@')[0].capitalize() if user_email else 'My Account',
+            'picture': '',
+            'role': 'owner' if user_email == OWNER_EMAIL else 'user',
+            'reply_mode': 'draft'
+        }
+        session['user'] = user
+
+    # Re-activate background agent if Flask restarted
     with _agent_lock:
         if not _agent_state.get("credentials"):
             _agent_state["credentials"]  = dict(session['credentials'])
             _agent_state["connected_at"] = session.get('connected_at', 0)
             _agent_state["running"]      = True
 
-    return DASHBOARD_PAGE
+    is_owner = (user.get('role') == 'owner' or user.get('email', '').lower() == OWNER_EMAIL)
+    return render_template_string(DASHBOARD_PAGE, user=user, is_owner=is_owner)
+
+
+@app.route("/admin")
+def admin_portal():
+    """Owner & Platform Administrator Control Center."""
+    user = session.get('user')
+    if not user:
+        return redirect(url_for('index'))
+    if user.get('role') != 'owner' and user.get('email', '').lower() != OWNER_EMAIL:
+        return """
+        <div style="font-family:sans-serif;text-align:center;margin-top:120px;color:#F87171;">
+            <h1 style="font-size:32px;">403 Forbidden: Owner Access Required</h1>
+            <p style="color:#9A9189;margin-top:8px;">Only the platform owner can access the Administrator Command Center.</p>
+            <p><a href="/dashboard" style="color:#C9A96E;text-decoration:none;font-weight:600;">← Return to My Dashboard</a></p>
+        </div>
+        """, 403
+
+    with _db() as conn:
+        total_users   = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        total_emails  = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
+        total_replies = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE reply_sent = 1").fetchone()[0]
+        total_spam    = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE classification = 'spam'").fetchone()[0]
+        users_list    = conn.execute("SELECT email, name, picture, role, reply_mode, connected_at, last_active FROM users ORDER BY connected_at DESC").fetchall()
+        recent_act    = conn.execute("""
+            SELECT user_email, subject, sender, classification, priority, reply_sent, status, received_at
+            FROM processed_emails
+            ORDER BY received_at DESC
+            LIMIT 15
+        """).fetchall()
+
+    return render_template_string(ADMIN_PAGE,
+        owner=user,
+        total_users=total_users,
+        total_emails=total_emails,
+        total_replies=total_replies,
+        total_spam=total_spam,
+        users=[dict(u) for u in users_list],
+        activity=[dict(a) for a in recent_act],
+        llm_model=_LLM_MODEL
+    )
+
+
+@app.route("/api/settings", methods=["GET", "POST"])
+def user_settings():
+    """View or update user reply mode (draft vs send) and signature."""
+    user = session.get('user')
+    if not user or not user.get('email'):
+        return {"error": "Not authenticated"}, 401
+
+    user_email = user['email']
+    if request.method == "POST":
+        data = request.get_json(silent=True) or request.form
+        reply_mode = data.get("reply_mode", user.get("reply_mode", "draft"))
+        signature  = data.get("signature", user.get("signature", ""))
+        
+        session['user']['reply_mode'] = reply_mode
+        session['user']['signature']  = signature
+
+        with _db() as conn:
+            conn.execute("""
+                UPDATE users SET reply_mode = ?, signature = ?, last_active = datetime('now')
+                WHERE email = ?
+            """, (reply_mode, signature, user_email))
+            conn.commit()
+
+        return {"status": "success", "reply_mode": reply_mode, "signature": signature}
+
+    return {
+        "email": user_email,
+        "name": user.get("name", ""),
+        "reply_mode": user.get("reply_mode", "draft"),
+        "signature": user.get("signature", "")
+    }
 
 
 @app.route("/run")
 def run_agent():
-    """Manual trigger — runs the same processing logic as the background loop.
-    Uses the DB (not session) as the duplicate guard, so manual + automatic
-    runs never create duplicate replies or duplicate records."""
+    """Manual trigger — isolated per authenticated user."""
     if 'credentials' not in session:
         return {"error": "Not connected"}, 401
 
     try:
         creds_dict   = dict(session['credentials'])
         connected_at = session.get('connected_at', 0)
+        user         = session.get('user', {})
+        user_email   = user.get('email', '').lower()
+        reply_mode   = user.get('reply_mode', 'draft')
 
         with _db() as conn:
-            before_count = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
+            if user_email:
+                before_count = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
+            else:
+                before_count = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
 
-        _process_inbox(creds_dict, connected_at)
+        _process_inbox(creds_dict, connected_at, user_info=user, reply_mode=reply_mode)
 
         with _db() as conn:
-            after_count = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
-            rows = conn.execute("""
-                SELECT subject, sender, classification, priority, reply_sent
-                FROM processed_emails
-                ORDER BY rowid DESC
-                LIMIT ?
-            """, (after_count - before_count,)).fetchall()
+            if user_email:
+                after_count = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
+                rows = conn.execute("""
+                    SELECT subject, sender, classification, priority, reply_sent, status
+                    FROM processed_emails
+                    WHERE user_email = ?
+                    ORDER BY rowid DESC
+                    LIMIT ?
+                """, (user_email, max(1, after_count - before_count))).fetchall()
+            else:
+                after_count = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
+                rows = conn.execute("""
+                    SELECT subject, sender, classification, priority, reply_sent, status
+                    FROM processed_emails
+                    ORDER BY rowid DESC
+                    LIMIT ?
+                """, (max(1, after_count - before_count),)).fetchall()
 
         emails = [{
             "subject": r["subject"],
             "sender": r["sender"],
             "classification": r["classification"],
             "priority": r["priority"],
-            "reply_sent": bool(r["reply_sent"])
+            "reply_sent": bool(r["reply_sent"]),
+            "status": r["status"]
         } for r in rows]
 
         return {
@@ -1537,14 +2090,24 @@ def run_agent():
 
 @app.route("/stats")
 def stats():
+    user = session.get('user', {})
+    user_email = user.get('email', '').lower()
     with _db() as conn:
-        total     = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
-        replies   = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE reply_sent=1").fetchone()[0]
-        high_pri  = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE priority='high'").fetchone()[0]
-        spam      = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE classification='spam'").fetchone()[0]
+        if user_email:
+            total     = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
+            replies   = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ? AND reply_sent=1", (user_email,)).fetchone()[0]
+            high_pri  = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ? AND priority='high'", (user_email,)).fetchone()[0]
+            spam      = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ? AND classification='spam'", (user_email,)).fetchone()[0]
+        else:
+            total     = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
+            replies   = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE reply_sent=1").fetchone()[0]
+            high_pri  = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE priority='high'").fetchone()[0]
+            spam      = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE classification='spam'").fetchone()[0]
+
     with _agent_lock:
         status    = _agent_state.get("status", "idle")
         last_poll = _agent_state.get("last_poll")
+
     return {
         "total_received":  total,
         "total_processed": total,
@@ -1558,13 +2121,23 @@ def stats():
 
 @app.route("/replies")
 def replies():
+    user = session.get('user', {})
+    user_email = user.get('email', '').lower()
     with _db() as conn:
-        rows = conn.execute("""
-            SELECT subject, sender, received_at, classification, priority, reply_text
-            FROM processed_emails
-            WHERE reply_sent = 1
-            ORDER BY received_at DESC
-        """).fetchall()
+        if user_email:
+            rows = conn.execute("""
+                SELECT subject, sender, received_at, classification, priority, reply_text, status
+                FROM processed_emails
+                WHERE user_email = ? AND reply_sent = 1
+                ORDER BY received_at DESC
+            """, (user_email,)).fetchall()
+        else:
+            rows = conn.execute("""
+                SELECT subject, sender, received_at, classification, priority, reply_text, status
+                FROM processed_emails
+                WHERE reply_sent = 1
+                ORDER BY received_at DESC
+            """).fetchall()
     return {"replies": [dict(r) for r in rows]}
 
 
