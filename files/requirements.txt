@@ -1,4 +1,13 @@
-# AI Email Triage System – Python dependencies
+# AURA AI Email Intelligence – Production & Development Dependencies
+Flask>=3.0.0
+gunicorn>=21.2.0
 openai>=1.14.0
-pyyaml>=6.0
+google-auth>=2.20.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.100.0
 python-dotenv>=1.0.0
+pyyaml>=6.0
+requests>=2.31.0
+reportlab>=4.0.0
+pytest>=8.0.0
