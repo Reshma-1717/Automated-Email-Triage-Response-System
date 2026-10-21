@@ -1,6 +1,6 @@
 """
 NEXUS AI — Autonomous Executive Email Intelligence
-World-Class Multi-Tenant Platform with Real-Time Background Triage & Executive UI.
+World-Class Multi-Tenant Platform with Light Lavender & Light Biscuit Luxury Executive UI.
 """
 
 from flask import Flask, redirect, request, session, url_for, render_template_string, jsonify
@@ -98,23 +98,23 @@ Priority Matrix:
 - "low": Informational, newsletters, low-relevance notifications.
 
 Reply Rules (Crucial):
-- needs_reply: true ONLY when an actual person wrote personally to {user_name} and expects a personal response.
-- needs_reply: false for ALL spam, newsletters, platform alerts, no-reply senders, receipts, and automated notifications.
-- If is_automated=true or is_bulk=true, ALWAYS set needs_reply: false and reply: "".
-- If needs_reply is true, draft a concise, polished, warm reply (under 75 words) speaking as {user_name}, signed "{sig}".
-
-Return valid JSON only. No markdown formatting, no commentary."""
+- If needs_reply is false, reply MUST be an empty string "".
+- If needs_reply is true, craft an articulate, warm, and professional reply signed "{sig}".
+- Never promise actions outside the user's explicit instructions.
+"""
 
 def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bulk: bool, user_name: str = "User", signature: str = None) -> dict:
     fallback = {
-        "classification": "normal",
+        "classification": "spam" if is_bulk else ("normal" if is_automated else "important"),
         "priority": "low" if (is_automated or is_bulk) else "medium",
-        "needs_reply": False,
-        "reply": "",
-        "reason": "Standard automated email classification."
+        "needs_reply": False if (is_automated or is_bulk) else True,
+        "reply": f"Hi,\n\nThank you for reaching out. I have received your email regarding '{subject}' and will review it shortly.\n\nBest regards,\n{signature or user_name}" if not (is_automated or is_bulk) else "",
+        "reason": "Rule-based triage evaluation."
     }
+
     if not _LLM_API_KEY:
         return fallback
+
     try:
         client = _openai.OpenAI(api_key=_LLM_API_KEY, base_url=_LLM_BASE_URL)
         prompt = _build_triage_prompt(user_name=user_name, signature=signature)
@@ -160,7 +160,7 @@ _agent_state = {
     "running":       False,
     "credentials":   None,
     "user_info":     None,
-    "poll_interval": 20,      # Autonomous check every 20 seconds
+    "poll_interval": 15,      # Autonomous check every 15 seconds
     "last_poll":     None,
     "status":        "idle",  # idle | polling | error
 }
@@ -222,7 +222,7 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
     with _db() as conn:
         seen = {r[0] for r in conn.execute("SELECT id FROM processed_emails WHERE user_email = ? OR user_email = ''", (user_email,)).fetchall()}
 
-    # Fetch latest 20 messages in INBOX (without time boundary to capture all new arrivals reliably)
+    # Fetch latest 20 messages in INBOX
     results = service.users().messages().list(
         userId='me',
         q='label:INBOX -from:mailer-daemon -from:postmaster',
@@ -337,13 +337,13 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
 
 
 def _background_loop():
-    """Runs forever in a daemon thread — autonomously polls inboxes every 20 seconds."""
+    """Runs forever in a daemon thread — autonomously polls inboxes every 15 seconds."""
     while True:
         with _agent_lock:
             creds        = _agent_state.get("credentials")
             connected_at = _agent_state.get("connected_at", 0)
             user_info    = _agent_state.get("user_info")
-            interval     = _agent_state.get("poll_interval", 20)
+            interval     = _agent_state.get("poll_interval", 15)
 
         if creds:
             try:
@@ -375,7 +375,7 @@ _ensure_background_thread()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. LANDING PAGE (Modern Executive Luxury Dark Theme)
+# 1. LANDING PAGE (Light Lavender & Light Biscuit Luxury Executive Theme)
 # ══════════════════════════════════════════════════════════════════════════════
 HOME_PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -388,54 +388,62 @@ HOME_PAGE = """<!DOCTYPE html>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg-void: #05070E;
-            --surface-1: #0C101D;
-            --surface-2: #141A2E;
-            --surface-3: #1C243F;
-            --accent-primary: #6366F1;
-            --accent-glow: rgba(99, 102, 241, 0.45);
-            --cyan: #06B6D4;
-            --gold: #F59E0B;
-            --emerald: #10B981;
-            --border: rgba(99, 102, 241, 0.16);
-            --border-hover: rgba(6, 182, 212, 0.35);
-            --text-main: #F8FAFC;
-            --text-sub: #94A3B8;
-            --text-dim: #64748B;
+            /* Light Biscuit & Light Lavender Luxury Palette (Zero Blue) */
+            --bg-biscuit-base: #FAF7F2;
+            --bg-biscuit-subtle: #F3EFE6;
+            --bg-biscuit-card: #FFFFFF;
+            --surface-biscuit-tint: #F7F3EC;
+            
+            --lavender-light: #F4EFFC;
+            --lavender-border: #E4D9F5;
+            --lavender-primary: #8B5CF6;
+            --lavender-deep: #7C3AED;
+            --lavender-glow: rgba(139, 92, 246, 0.22);
+
+            --biscuit-warm: #D9CBBA;
+            --biscuit-border: #E8E1D5;
+            --biscuit-accent: #B8926A;
+            --biscuit-deep: #856543;
+
+            --text-heading: #1F1728;
+            --text-body: #463D52;
+            --text-muted: #7B7088;
+            --text-dim: #A399AF;
         }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg-void);
-            color: var(--text-main);
+            background: var(--bg-biscuit-base);
+            color: var(--text-body);
             min-height: 100vh;
             overflow-x: hidden;
-            line-height: 1.5;
+            line-height: 1.55;
         }
-        /* Glowing Ambient Background */
+        /* Soft Ambient Glow (Light Lavender & Light Biscuit) */
         .ambient-glow {
             position: fixed;
-            width: 700px;
-            height: 700px;
+            width: 750px;
+            height: 750px;
             border-radius: 50%;
-            filter: blur(150px);
+            filter: blur(140px);
             pointer-events: none;
             z-index: 0;
-            opacity: 0.18;
+            opacity: 0.35;
         }
-        .glow-1 { top: -200px; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, var(--accent-primary) 0%, var(--cyan) 100%); }
-        .glow-2 { bottom: -100px; right: -50px; background: radial-gradient(circle, #8B5CF6 0%, transparent 70%); }
+        .glow-1 { top: -200px; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, #E8DEFA 0%, #F5EDE0 100%); }
+        .glow-2 { bottom: -120px; right: -80px; background: radial-gradient(circle, #DDD0F8 0%, #EFE5D8 70%); }
 
         nav {
             position: fixed;
             top: 0; left: 0; right: 0;
             z-index: 100;
-            padding: 20px 60px;
+            padding: 18px 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(5, 7, 14, 0.7);
-            backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--border);
+            background: rgba(250, 247, 242, 0.88);
+            backdrop-filter: blur(18px);
+            -webkit-backdrop-filter: blur(18px);
+            border-bottom: 1px solid var(--biscuit-border);
         }
         .brand {
             display: flex;
@@ -444,51 +452,51 @@ HOME_PAGE = """<!DOCTYPE html>
             text-decoration: none;
         }
         .brand-icon {
-            width: 38px;
-            height: 38px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, var(--accent-primary), var(--cyan));
+            width: 40px;
+            height: 40px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, var(--lavender-primary), var(--biscuit-accent));
             display: flex;
             align-items: center;
             justify-content: center;
             font-family: 'Outfit', sans-serif;
             font-weight: 800;
-            font-size: 19px;
+            font-size: 20px;
             color: #FFF;
-            box-shadow: 0 0 20px var(--accent-glow);
+            box-shadow: 0 4px 16px var(--lavender-glow);
         }
         .brand-name {
             font-family: 'Outfit', sans-serif;
-            font-size: 22px;
+            font-size: 23px;
             font-weight: 700;
             letter-spacing: -0.02em;
-            color: var(--text-main);
+            color: var(--text-heading);
         }
         .brand-badge {
             font-size: 10px;
-            font-weight: 600;
-            padding: 3px 8px;
+            font-weight: 700;
+            padding: 3px 9px;
             border-radius: 20px;
-            background: rgba(99, 102, 241, 0.15);
-            color: #A5B4FC;
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            letter-spacing: 0.05em;
+            background: var(--lavender-light);
+            color: var(--lavender-deep);
+            border: 1px solid var(--lavender-border);
+            letter-spacing: 0.04em;
         }
         .nav-cta {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 22px;
-            border-radius: 8px;
-            font-size: 13.5px;
+            padding: 10px 24px;
+            border-radius: 10px;
+            font-size: 14px;
             font-weight: 600;
             text-decoration: none;
-            background: linear-gradient(135deg, var(--accent-primary), #4F46E5);
+            background: var(--lavender-deep);
             color: #FFF;
-            box-shadow: 0 4px 18px var(--accent-glow);
+            box-shadow: 0 4px 16px var(--lavender-glow);
             transition: all 0.25s ease;
         }
-        .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 6px 24px var(--accent-glow); }
+        .nav-cta:hover { transform: translateY(-2px); background: #6D28D9; box-shadow: 0 6px 22px var(--lavender-glow); }
 
         /* Hero */
         .hero {
@@ -496,41 +504,42 @@ HOME_PAGE = """<!DOCTYPE html>
             z-index: 10;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 160px 24px 80px;
+            padding: 150px 24px 80px;
             text-align: center;
         }
         .pill-badge {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 6px 16px;
+            padding: 6px 18px;
             border-radius: 30px;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            font-size: 12px;
+            background: var(--lavender-light);
+            border: 1px solid var(--lavender-border);
+            font-size: 12.5px;
             font-weight: 600;
-            color: #C7D2FE;
+            color: var(--lavender-deep);
             margin-bottom: 24px;
         }
         .hero-title {
             font-family: 'Outfit', sans-serif;
             font-size: 64px;
             font-weight: 800;
-            line-height: 1.1;
+            line-height: 1.12;
             letter-spacing: -0.03em;
             margin-bottom: 24px;
-            max-width: 950px;
+            max-width: 960px;
             margin-left: auto;
             margin-right: auto;
+            color: var(--text-heading);
         }
         .gradient-text {
-            background: linear-gradient(135deg, #FFFFFF 30%, #A5B4FC 70%, var(--cyan) 100%);
+            background: linear-gradient(135deg, #1F1728 20%, var(--lavender-deep) 65%, var(--biscuit-deep) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         .hero-subtitle {
-            font-size: 18px;
-            color: var(--text-sub);
+            font-size: 18.5px;
+            color: var(--text-muted);
             max-width: 680px;
             margin: 0 auto 40px;
             font-weight: 400;
@@ -546,133 +555,104 @@ HOME_PAGE = """<!DOCTYPE html>
             align-items: center;
             gap: 12px;
             padding: 16px 36px;
-            border-radius: 10px;
+            border-radius: 12px;
             font-size: 16px;
             font-weight: 700;
             text-decoration: none;
-            background: linear-gradient(135deg, var(--accent-primary), #4338CA);
+            background: linear-gradient(135deg, var(--lavender-deep), #8B5CF6);
             color: #FFF;
-            box-shadow: 0 10px 30px var(--accent-glow);
+            box-shadow: 0 8px 24px var(--lavender-glow);
             transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-large:hover {
-            transform: translateY(-3px) scale(1.02);
-            box-shadow: 0 14px 40px var(--accent-glow);
-        }
-        .btn-secondary {
+        .btn-large:hover { transform: translateY(-3px); box-shadow: 0 12px 32px var(--lavender-glow); background: #6D28D9; }
+        .btn-outline {
             display: inline-flex;
             align-items: center;
-            gap: 8px;
-            padding: 16px 28px;
-            border-radius: 10px;
+            gap: 10px;
+            padding: 16px 30px;
+            border-radius: 12px;
             font-size: 15px;
             font-weight: 600;
             text-decoration: none;
-            background: var(--surface-2);
-            color: var(--text-main);
-            border: 1px solid var(--border);
-            transition: all 0.2s;
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            color: var(--text-heading);
+            transition: all 0.25s ease;
+            box-shadow: 0 2px 8px rgba(133, 101, 67, 0.06);
         }
-        .btn-secondary:hover { background: var(--surface-3); border-color: var(--border-hover); }
+        .btn-outline:hover { border-color: var(--lavender-primary); color: var(--lavender-deep); transform: translateY(-2px); }
 
-        /* Live Preview Simulation Card */
-        .preview-container {
-            max-width: 900px;
-            margin: 60px auto 0;
-            background: var(--surface-1);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 24px;
-            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(16px);
-            text-align: left;
-        }
-        .preview-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 16px;
-            margin-bottom: 20px;
-        }
-        .preview-dots { display: flex; gap: 6px; }
-        .p-dot { width: 10px; height: 10px; border-radius: 50%; }
-        .dot-r { background: #EF4444; } .dot-y { background: #F59E0B; } .dot-g { background: #10B981; }
-        .preview-email {
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 18px 20px;
-            margin-bottom: 14px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .badge-pill {
-            padding: 4px 10px;
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .badge-high { background: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); }
-        .badge-important { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
-        .badge-draft { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
-
-        /* Feature Pillars */
-        .features {
-            max-width: 1200px;
-            margin: 80px auto;
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 28px;
+        /* Feature Matrix */
+        .matrix-section {
+            position: relative;
+            z-index: 10;
+            max-width: 1100px;
+            margin: 40px auto 100px;
             padding: 0 24px;
         }
-        .feature-card {
-            background: var(--surface-1);
-            border: 1px solid var(--border);
-            border-radius: 14px;
-            padding: 32px 28px;
-            transition: all 0.3s;
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 24px;
         }
-        .feature-card:hover {
-            border-color: var(--border-hover);
+        .matrix-card {
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 16px;
+            padding: 36px 30px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 18px rgba(133, 101, 67, 0.05);
+            position: relative;
+        }
+        .matrix-card:hover {
+            border-color: var(--lavender-border);
             transform: translateY(-4px);
-            box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+            box-shadow: 0 12px 30px var(--lavender-glow);
         }
-        .feature-icon {
-            font-size: 28px;
-            margin-bottom: 18px;
-            display: inline-block;
+        .matrix-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            background: var(--lavender-light);
+            border: 1px solid var(--lavender-border);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            margin-bottom: 20px;
+            color: var(--lavender-deep);
         }
-        .feature-title {
+        .matrix-title {
             font-family: 'Outfit', sans-serif;
             font-size: 20px;
-            font-weight: 600;
+            font-weight: 700;
+            color: var(--text-heading);
             margin-bottom: 10px;
         }
-        .feature-desc {
-            font-size: 14px;
-            color: var(--text-sub);
+        .matrix-desc {
+            font-size: 14.5px;
+            color: var(--text-muted);
             line-height: 1.6;
         }
 
         footer {
-            border-top: 1px solid var(--border);
-            padding: 40px 60px;
+            position: relative;
+            z-index: 10;
+            border-top: 1px solid var(--biscuit-border);
+            padding: 36px 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            color: var(--text-dim);
-            font-size: 13px;
+            font-size: 13.5px;
+            color: var(--text-muted);
+            background: var(--bg-biscuit-subtle);
         }
-        @media (max-width: 768px) {
-            nav { padding: 16px 20px; }
-            .hero-title { font-size: 40px; }
-            .features { grid-template-columns: 1fr; }
-            .cta-group { flex-direction: column; }
-            footer { flex-direction: column; gap: 16px; text-align: center; }
+        footer a { color: var(--lavender-deep); text-decoration: none; font-weight: 600; }
+
+        @media (max-width: 900px) {
+            nav { padding: 16px 24px; }
+            .hero-title { font-size: 42px; }
+            .matrix-grid { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -684,291 +664,279 @@ HOME_PAGE = """<!DOCTYPE html>
         <a href="/" class="brand">
             <div class="brand-icon">N</div>
             <span class="brand-name">NEXUS</span>
-            <span class="brand-badge">PRO EDITION</span>
+            <span class="brand-badge">ATELIER</span>
         </a>
-        <a href="/connect" class="nav-cta">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/></svg>
-            Connect Gmail
-        </a>
+        <div style="display:flex;align-items:center;gap:20px;">
+            <a href="/login" class="nav-cta">Connect Gmail →</a>
+        </div>
     </nav>
 
     <main class="hero">
         <div class="pill-badge">
-            <span style="color:var(--emerald);">●</span> AUTONOMOUS INBOX INTELLIGENCE ENGINE
+            <span>✦</span>
+            <span>Autonomous Executive Email Intelligence</span>
         </div>
         <h1 class="hero-title">
-            Your Inbox, <span class="gradient-text">Triaged & Answered</span> While You Sleep.
+            Your Executive Inbox,<br>
+            <span class="gradient-text">Triaged & Answered in Real Time.</span>
         </h1>
         <p class="hero-subtitle">
-            NEXUS automatically classifies incoming emails, detects critical deadlines, and prepares high-caliber draft replies speaking in your personal voice.
+            NEXUS autonomously monitors your inbox, extracts critical action items, classifies urgency, and generates safe, personalized drafts without manual button clicks.
         </p>
-
         <div class="cta-group">
-            <a href="/connect" class="btn-large">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/></svg>
-                Launch with Google Workspace
+            <a href="/login" class="btn-large">
+                <span>Connect with Google</span>
+                <span>→</span>
             </a>
-            <a href="#features" class="btn-secondary">Explore Capabilities ↓</a>
-        </div>
-
-        <!-- Live Simulation Card -->
-        <div class="preview-container">
-            <div class="preview-header">
-                <div class="preview-dots">
-                    <div class="p-dot dot-r"></div>
-                    <div class="p-dot dot-y"></div>
-                    <div class="p-dot dot-g"></div>
-                </div>
-                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-dim);">
-                    NEXUS Core 3.0 • Autonomous Engine Active
-                </div>
-            </div>
-
-            <div class="preview-email">
-                <div>
-                    <div style="font-weight:600;font-size:14.5px;margin-bottom:3px;">Senior Software Engineer — Final Interview Schedule</div>
-                    <div style="font-size:12px;color:var(--text-sub);font-family:'JetBrains Mono',monospace;">From: talent@hypertech.com</div>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <span class="badge-pill badge-high">High Priority</span>
-                    <span class="badge-pill badge-draft">Draft Prepared</span>
-                </div>
-            </div>
-
-            <div class="preview-email" style="opacity:0.75;">
-                <div>
-                    <div style="font-weight:600;font-size:14.5px;margin-bottom:3px;">Q3 Financial Projections & Board Deck Review</div>
-                    <div style="font-size:12px;color:var(--text-sub);font-family:'JetBrains Mono',monospace;">From: cfo@venturegroup.co</div>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <span class="badge-pill badge-important">Important</span>
-                    <span class="badge-pill badge-draft">Draft Prepared</span>
-                </div>
-            </div>
+            <a href="#features" class="btn-outline">
+                <span>Explore Capabilities</span>
+            </a>
         </div>
     </main>
 
-    <section class="features" id="features">
-        <div class="feature-card">
-            <div class="feature-icon">⚡</div>
-            <h3 class="feature-title">Real-Time Autonomous Triage</h3>
-            <p class="feature-desc">NEXUS operates 24/7 in the background, intercepting incoming mail within seconds. You never need to manually press refresh.</p>
-        </div>
-        <div class="feature-card">
-            <div class="feature-icon">🛡️</div>
-            <h3 class="feature-title">Safe "Draft First" Mode</h3>
-            <p class="feature-desc">Replies are prepared directly inside your Gmail Drafts folder for one-click review. No unwanted auto-sends without explicit authorization.</p>
-        </div>
-        <div class="feature-card">
-            <div class="feature-icon">👑</div>
-            <h3 class="feature-title">Multi-Tenant Vault Isolation</h3>
-            <p class="feature-desc">Complete cryptographic isolation. Your inbox data and replies belong strictly to your account, with dedicated Owner administration oversight.</p>
+    <section class="matrix-section" id="features">
+        <div class="matrix-grid">
+            <div class="matrix-card">
+                <div class="matrix-icon">⚡</div>
+                <h3 class="matrix-title">Autonomous Live Sync</h3>
+                <p class="matrix-desc">
+                    Engine continuously scans in real time every 15 seconds. New emails are instantly analyzed and surfaced without manual refresh.
+                </p>
+            </div>
+            <div class="matrix-card">
+                <div class="matrix-icon">🛡️</div>
+                <h3 class="matrix-title">Safe-by-Default Drafts</h3>
+                <p class="matrix-desc">
+                    Replies are crafted directly into your Gmail Drafts folder. You maintain 100% human-in-the-loop sign-off before any message goes out.
+                </p>
+            </div>
+            <div class="matrix-card">
+                <div class="matrix-icon">⚖️</div>
+                <h3 class="matrix-title">Executive Triage Matrix</h3>
+                <p class="matrix-desc">
+                    High, Medium, and Low urgency classification instantly separates urgent client inquiries from newsletters and low-priority digests.
+                </p>
+            </div>
         </div>
     </section>
 
     <footer>
-        <div>NEXUS AI Platform • All Rights Reserved.</div>
-        <div>Created & Owned by Reshma Kodavali • OpenEnv Production Release</div>
+        <div>© 2026 NEXUS Intelligence Inc. • Engineered for Executive Productivity</div>
+        <div>Platform Owner: <a href="/admin">Administrator Portal</a></div>
     </footer>
 </body>
 </html>
 """
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. DASHBOARD PAGE (World-Class Interactive Executive Dashboard with Live Poll)
+# 2. DASHBOARD PAGE (Light Lavender & Light Biscuit Luxury Executive Theme)
 # ══════════════════════════════════════════════════════════════════════════════
 DASHBOARD_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NEXUS — Inbox Intelligence</title>
+    <title>NEXUS — Executive Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg-void: #06080F;
-            --surface-1: #0D111D;
-            --surface-2: #141A2D;
-            --surface-3: #1B233D;
-            --accent: #6366F1;
-            --accent-glow: rgba(99, 102, 241, 0.35);
-            --cyan: #06B6D4;
-            --emerald: #10B981;
-            --amber: #F59E0B;
-            --rose: #F43F5E;
-            --border: rgba(99, 102, 241, 0.16);
-            --border-strong: rgba(99, 102, 241, 0.3);
-            --text-main: #F8FAFC;
-            --text-sub: #94A3B8;
-            --text-muted: #64748B;
+            /* Light Biscuit & Light Lavender Luxury Palette (Zero Blue) */
+            --bg-biscuit-base: #FAF7F2;
+            --bg-biscuit-subtle: #F3EFE6;
+            --bg-biscuit-card: #FFFFFF;
+            --surface-biscuit-tint: #F7F3EC;
+            
+            --lavender-light: #F4EFFC;
+            --lavender-border: #E4D9F5;
+            --lavender-primary: #8B5CF6;
+            --lavender-deep: #7C3AED;
+            --lavender-glow: rgba(139, 92, 246, 0.20);
+
+            --biscuit-warm: #D9CBBA;
+            --biscuit-border: #E8E1D5;
+            --biscuit-accent: #B8926A;
+            --biscuit-deep: #856543;
+
+            --text-heading: #1F1728;
+            --text-body: #463D52;
+            --text-muted: #7B7088;
+            --text-dim: #A399AF;
         }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg-void);
-            color: var(--text-main);
+            background: var(--bg-biscuit-base);
+            color: var(--text-body);
             min-height: 100vh;
-            overflow-x: hidden;
-        }
-        .layout {
             display: grid;
             grid-template-columns: 280px 1fr;
-            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        /* ── Sidebar ── */
+        /* ── Left Sidebar ── */
         .sidebar {
-            background: var(--surface-1);
-            border-right: 1px solid var(--border);
-            padding: 32px 24px;
+            background: var(--bg-biscuit-subtle);
+            border-right: 1px solid var(--biscuit-border);
             display: flex;
             flex-direction: column;
+            justify-content: space-between;
+            padding: 28px 22px;
+            min-height: 100vh;
         }
-        .brand {
+        .brand-cluster {
             display: flex;
             align-items: center;
             gap: 12px;
-            margin-bottom: 40px;
+            margin-bottom: 36px;
             text-decoration: none;
         }
         .brand-icon {
             width: 36px; height: 36px;
-            border-radius: 9px;
-            background: linear-gradient(135deg, var(--accent), var(--cyan));
-            display: flex;
-            align-items: center; justify-content: center;
-            font-family: 'Outfit', sans-serif;
-            font-weight: 800; font-size: 18px; color: #FFF;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--lavender-primary), var(--biscuit-accent));
+            display: flex; align-items: center; justify-content: center;
+            font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 18px; color: #FFF;
+            box-shadow: 0 4px 12px var(--lavender-glow);
         }
-        .brand-text {
+        .brand-name {
             font-family: 'Outfit', sans-serif;
-            font-size: 20px; font-weight: 700; color: var(--text-main);
-        }
-        .sidebar-section-title {
-            font-size: 10px;
+            font-size: 21px;
             font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.18em;
-            color: var(--text-muted);
-            margin-bottom: 12px;
+            color: var(--text-heading);
+        }
+        .nav-links {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
         }
         .nav-item {
             display: flex;
             align-items: center;
             gap: 12px;
-            padding: 12px 14px;
-            border-radius: 8px;
-            font-size: 13.5px;
-            font-weight: 500;
-            color: var(--text-sub);
-            text-decoration: none;
-            cursor: pointer;
-            border: 1px solid transparent;
-            background: transparent;
-            width: 100%;
-            text-align: left;
-            transition: all 0.2s;
-            margin-bottom: 6px;
-        }
-        .nav-item:hover { background: var(--surface-2); color: var(--text-main); }
-        .nav-item.active {
-            background: rgba(99, 102, 241, 0.14);
-            border-color: rgba(99, 102, 241, 0.3);
-            color: #C7D2FE;
+            padding: 11px 16px;
+            border-radius: 10px;
+            font-size: 14px;
             font-weight: 600;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .nav-item:hover {
+            color: var(--text-heading);
+            background: var(--surface-biscuit-tint);
+        }
+        .nav-item.active {
+            color: var(--lavender-deep);
+            background: var(--lavender-light);
+            border: 1px solid var(--lavender-border);
         }
 
-        .sidebar-user {
-            margin-top: auto;
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 14px;
+        .user-card {
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 12px;
+            padding: 16px;
             display: flex;
             align-items: center;
             gap: 12px;
+            box-shadow: 0 2px 8px rgba(133, 101, 67, 0.04);
         }
-        .avatar {
-            width: 36px; height: 36px;
+        .user-avatar {
+            width: 42px; height: 42px;
             border-radius: 50%;
-            object-fit: cover;
-            border: 1.5px solid var(--accent);
-            background: var(--surface-3);
+            background: linear-gradient(135deg, var(--lavender-light), var(--biscuit-warm));
+            border: 1px solid var(--lavender-border);
             display: flex; align-items: center; justify-content: center;
-            font-weight: 700; color: #C7D2FE;
+            font-weight: 700; color: var(--lavender-deep);
+            overflow: hidden;
+            flex-shrink: 0;
         }
+        .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .user-details { flex: 1; min-width: 0; }
         .user-name {
-            font-size: 13px; font-weight: 600; color: var(--text-main);
+            font-size: 13.5px; font-weight: 700; color: var(--text-heading);
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .user-role {
-            font-size: 11px; color: var(--emerald);
-            display: flex; align-items: center; gap: 4px;
+        .user-role-badge {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            padding: 2px 7px; border-radius: 4px;
+            background: var(--lavender-light); color: var(--lavender-deep);
+            display: inline-block; margin-top: 3px;
         }
 
-        /* ── Main Dashboard ── */
+        /* ── Main Area ── */
         .main {
             display: flex;
             flex-direction: column;
             overflow-y: auto;
             max-height: 100vh;
+            background: var(--bg-biscuit-base);
         }
         .topbar {
-            padding: 24px 44px;
-            border-bottom: 1px solid var(--border);
+            padding: 22px 44px;
+            border-bottom: 1px solid var(--biscuit-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(6, 8, 15, 0.7);
+            background: rgba(250, 247, 242, 0.9);
             backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             position: sticky; top: 0; z-index: 50;
         }
         .live-status-pill {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 6px 14px;
+            padding: 6px 16px;
             border-radius: 20px;
-            background: rgba(16, 185, 129, 0.12);
-            border: 1px solid rgba(16, 185, 129, 0.28);
-            font-size: 12px;
-            color: #34D399;
+            background: var(--lavender-light);
+            border: 1px solid var(--lavender-border);
+            font-size: 12.5px;
+            color: var(--lavender-deep);
             font-weight: 600;
         }
         .pulse-dot {
             width: 8px; height: 8px;
             border-radius: 50%;
-            background: #10B981;
-            box-shadow: 0 0 10px #10B981;
-            animation: pulse-green 1.8s infinite;
+            background: var(--lavender-deep);
+            box-shadow: 0 0 10px var(--lavender-deep);
+            animation: pulse-lavender 1.8s infinite;
         }
-        @keyframes pulse-green {
+        @keyframes pulse-lavender {
             0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.4; transform: scale(1.3); }
+            50% { opacity: 0.35; transform: scale(1.35); }
         }
         .action-cluster {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 16px;
+        }
+        .countdown-indicator {
+            font-size: 12.5px;
+            color: var(--text-muted);
+            font-family: 'JetBrains Mono', monospace;
+            background: var(--surface-biscuit-tint);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--biscuit-border);
         }
         .btn-sync {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            padding: 10px 20px;
-            border-radius: 8px;
-            font-size: 13px;
+            padding: 10px 22px;
+            border-radius: 10px;
+            font-size: 13.5px;
             font-weight: 600;
-            background: linear-gradient(135deg, var(--accent), #4338CA);
+            background: var(--lavender-deep);
             color: #FFF;
             border: none;
             cursor: pointer;
-            box-shadow: 0 4px 16px var(--accent-glow);
+            box-shadow: 0 4px 14px var(--lavender-glow);
             transition: all 0.2s;
         }
-        .btn-sync:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+        .btn-sync:hover { transform: translateY(-1px); background: #6D28D9; box-shadow: 0 6px 20px var(--lavender-glow); }
 
         .content {
             padding: 36px 44px;
@@ -982,53 +950,57 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             margin-bottom: 36px;
         }
         .m-card {
-            background: var(--surface-1);
-            border: 1px solid var(--border);
-            border-radius: 12px;
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 14px;
             padding: 22px 24px;
             position: relative;
             overflow: hidden;
             transition: all 0.25s;
+            box-shadow: 0 3px 14px rgba(133, 101, 67, 0.04);
         }
-        .m-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+        .m-card:hover { border-color: var(--lavender-border); transform: translateY(-2px); box-shadow: 0 8px 24px var(--lavender-glow); }
         .m-label {
-            font-size: 11px;
-            font-weight: 600;
+            font-size: 11.5px;
+            font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.12em;
+            letter-spacing: 0.1em;
             color: var(--text-muted);
             margin-bottom: 8px;
         }
         .m-val {
             font-family: 'Outfit', sans-serif;
-            font-size: 34px;
+            font-size: 36px;
             font-weight: 700;
-            color: var(--text-main);
+            color: var(--text-heading);
         }
         .m-sub {
-            font-size: 11.5px;
-            color: var(--text-sub);
+            font-size: 12px;
+            color: var(--text-muted);
             margin-top: 4px;
         }
 
         /* ── Feed Section ── */
         .feed-container {
-            background: var(--surface-1);
-            border: 1px solid var(--border);
-            border-radius: 14px;
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 16px;
             overflow: hidden;
+            box-shadow: 0 4px 20px rgba(133, 101, 67, 0.04);
         }
         .feed-header {
-            padding: 20px 28px;
-            border-bottom: 1px solid var(--border);
+            padding: 22px 28px;
+            border-bottom: 1px solid var(--biscuit-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
+            background: #FFFEFD;
         }
         .feed-title {
             font-family: 'Outfit', sans-serif;
-            font-size: 18px;
-            font-weight: 600;
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-heading);
         }
         .feed-controls {
             display: flex;
@@ -1036,62 +1008,65 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             gap: 12px;
         }
         .search-input {
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 7px 14px;
-            font-size: 12.5px;
-            color: var(--text-main);
+            background: var(--surface-biscuit-tint);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-size: 13px;
+            color: var(--text-heading);
             outline: none;
-            width: 200px;
+            width: 240px;
+            transition: all 0.2s;
         }
-        .search-input:focus { border-color: var(--cyan); }
+        .search-input:focus { border-color: var(--lavender-primary); background: #FFF; box-shadow: 0 0 0 3px var(--lavender-glow); }
 
         /* Email Rows */
         .email-list { display: flex; flex-direction: column; }
         .email-row {
             padding: 18px 28px;
-            border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+            border-bottom: 1px solid var(--biscuit-border);
             display: flex;
             align-items: center;
             justify-content: space-between;
             cursor: pointer;
             transition: all 0.15s;
+            background: #FFF;
         }
         .email-row:last-child { border-bottom: none; }
-        .email-row:hover { background: rgba(99, 102, 241, 0.04); }
+        .email-row:hover { background: var(--lavender-light); }
         .email-main-info { flex: 1; min-width: 0; padding-right: 24px; }
         .email-subject {
-            font-size: 14px;
+            font-size: 14.5px;
             font-weight: 600;
-            color: var(--text-main);
+            color: var(--text-heading);
             margin-bottom: 4px;
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .email-sender {
-            font-size: 12px;
+            font-size: 12.5px;
             font-family: 'JetBrains Mono', monospace;
-            color: var(--text-sub);
+            color: var(--text-muted);
         }
         .badge-tag {
-            padding: 3px 9px;
-            border-radius: 4px;
-            font-size: 10px;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 11px;
             font-weight: 700;
             text-transform: uppercase;
-            letter-spacing: 0.06em;
+            letter-spacing: 0.05em;
         }
-        .b-high { background: rgba(244, 63, 94, 0.15); color: #FB7185; border: 1px solid rgba(244, 63, 94, 0.3); }
-        .b-medium { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
-        .b-low { background: rgba(148, 163, 184, 0.1); color: #94A3B8; border: 1px solid var(--border); }
-        .b-draft { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
-        .b-spam { background: rgba(244, 63, 94, 0.12); color: #F43F5E; }
+        .b-high { background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
+        .b-medium { background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; }
+        .b-low { background: var(--surface-biscuit-tint); color: var(--text-muted); border: 1px solid var(--biscuit-border); }
+        .b-draft { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
+        .b-lavender { background: var(--lavender-light); color: var(--lavender-deep); border: 1px solid var(--lavender-border); }
 
         /* Slide-over Drawer Modal */
         .drawer-overlay {
             position: fixed; inset: 0;
-            background: rgba(0,0,0,0.65);
-            backdrop-filter: blur(8px);
+            background: rgba(31, 23, 40, 0.45);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
             z-index: 200;
             display: none;
             opacity: 0;
@@ -1100,176 +1075,199 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
         .drawer-overlay.active { display: block; opacity: 1; }
         .drawer {
             position: fixed; top: 0; right: 0; bottom: 0;
-            width: 540px;
-            max-width: 90vw;
-            background: var(--surface-1);
-            border-left: 1px solid var(--border-strong);
-            box-shadow: -10px 0 40px rgba(0,0,0,0.8);
-            z-index: 201;
+            width: 560px;
+            max-width: 92vw;
+            background: #FFFFFF;
+            border-left: 1px solid var(--biscuit-border);
+            box-shadow: -10px 0 40px rgba(31, 23, 40, 0.15);
+            z-index: 210;
             padding: 36px 32px;
-            display: flex;
-            flex-direction: column;
+            overflow-y: auto;
             transform: translateX(100%);
             transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-            overflow-y: auto;
+            display: flex; flex-direction: column;
         }
         .drawer.active { transform: translateX(0); }
         .drawer-close {
-            align-self: flex-end;
-            background: none; border: none;
+            position: absolute; top: 24px; right: 24px;
+            background: var(--surface-biscuit-tint);
+            border: 1px solid var(--biscuit-border);
             color: var(--text-muted);
-            font-size: 20px; cursor: pointer;
+            width: 34px; height: 34px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.2s;
+        }
+        .drawer-close:hover { color: var(--text-heading); border-color: var(--lavender-primary); background: var(--lavender-light); }
+        .drawer-subject {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-heading);
+            margin-bottom: 8px;
+            padding-right: 40px;
+        }
+        .drawer-sender {
+            font-size: 13px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-muted);
+            margin-bottom: 24px;
+        }
+        .drawer-card {
+            background: var(--surface-biscuit-tint);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
         }
         .reply-box {
-            background: var(--surface-2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
+            background: var(--lavender-light);
+            border: 1px solid var(--lavender-border);
+            border-radius: 10px;
+            padding: 16px 20px;
             font-size: 13.5px;
             line-height: 1.6;
-            margin-top: 16px;
-            color: #E2E8F0;
-        }
-        @media (max-width: 900px) {
-            .layout { grid-template-columns: 1fr; }
-            .sidebar { display: none; }
-            .metrics-grid { grid-template-columns: 1fr 1fr; }
-            .topbar, .content { padding: 20px; }
+            color: var(--text-heading);
+            white-space: pre-wrap;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
-    <div class="layout">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <a href="/" class="brand">
+    <!-- Left Navigation -->
+    <aside class="sidebar">
+        <div>
+            <a href="/dashboard" class="brand-cluster">
                 <div class="brand-icon">N</div>
-                <span class="brand-text">NEXUS</span>
+                <div class="brand-name">NEXUS</div>
             </a>
 
-            <div class="sidebar-section-title">Navigation</div>
-            <button class="nav-item active">
-                <span>◈</span> Inbox Intelligence
-            </button>
-            <button class="nav-item" onclick="triggerManualSync()">
-                <span>⚡</span> Scan Inbox Now
-            </button>
-
-            {% if is_owner %}
-            <div style="margin-top: 14px;">
-                <div class="sidebar-section-title">Platform Governance</div>
-                <a href="/admin" class="nav-item" style="color:var(--cyan);background:rgba(6,182,212,0.08);border-color:rgba(6,182,212,0.25);">
-                    <span>👑</span> Owner Command Center
+            <nav class="nav-links">
+                <a href="/dashboard" class="nav-item active">
+                    <span>⚡</span> <span>Live Ingestion</span>
                 </a>
-            </div>
-            {% endif %}
-
-            <!-- User Badge -->
-            <div class="sidebar-user">
-                {% if user.picture %}
-                <img src="{{ user.picture }}" alt="{{ user.name }}" class="avatar">
-                {% else %}
-                <div class="avatar">{{ (user.name or user.email or 'U')[0].upper() }}</div>
+                {% if is_owner %}
+                <a href="/admin" class="nav-item">
+                    <span>👑</span> <span>Owner Command</span>
+                </a>
                 {% endif %}
+                <a href="https://mail.google.com" target="_blank" class="nav-item">
+                    <span>↗</span> <span>Open Gmail</span>
+                </a>
+            </nav>
+        </div>
+
+        <div>
+            <div class="user-card">
+                <div class="user-avatar">
+                    {% if user.picture %}
+                    <img src="{{ user.picture }}" alt="User">
+                    {% else %}
+                    {{ user.name[:1] if user.name else 'U' }}
+                    {% endif %}
+                </div>
                 <div class="user-details">
-                    <div class="user-name" title="{{ user.email }}">{{ user.name or 'My Account' }}</div>
-                    <div class="user-role">{{ '👑 Platform Owner' if is_owner else '● Connected' }}</div>
+                    <div class="user-name">{{ user.name }}</div>
+                    <div class="user-role-badge">{{ user.role|upper }}</div>
                 </div>
-                <a href="/disconnect" style="color:var(--text-muted);text-decoration:none;font-size:14px;padding:4px;" title="Sign Out">✕</a>
+                <a href="/disconnect" title="Disconnect" style="color:var(--text-muted);text-decoration:none;font-size:16px;">⎋</a>
             </div>
-        </aside>
+        </div>
+    </aside>
 
-        <!-- Main Content -->
-        <main class="main">
-            <header class="topbar">
-                <div class="live-status-pill">
-                    <div class="pulse-dot"></div>
-                    <span>Autonomous Engine Active</span>
-                    <span style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:11px;">• auto-syncing</span>
+    <!-- Main Content -->
+    <main class="main">
+        <header class="topbar">
+            <div class="live-status-pill">
+                <div class="pulse-dot"></div>
+                <span>Autonomous Engine Active</span>
+                <span style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:11px;">• auto-syncing</span>
+            </div>
+
+            <div class="action-cluster">
+                <div class="countdown-indicator">
+                    Next scan: <span id="countdown" style="font-weight:700;color:var(--lavender-deep);">15</span>s
                 </div>
+                <button class="btn-sync" id="syncBtn" onclick="triggerManualSync()">
+                    <span>⚡</span> Force Sync
+                </button>
+            </div>
+        </header>
 
-                <div class="action-cluster">
-                    <div style="font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">
-                        Next scan: <span id="countdown">15</span>s
-                    </div>
-                    <button class="btn-sync" id="syncBtn" onclick="triggerManualSync()">
-                        <span>⚡</span> Force Sync
-                    </button>
+        <div class="content">
+            <!-- Metrics -->
+            <div class="metrics-grid">
+                <div class="m-card">
+                    <div class="m-label">Total Ingested</div>
+                    <div class="m-val" id="metricTotal">0</div>
+                    <div class="m-sub">Monitored inbox messages</div>
                 </div>
-            </header>
-
-            <div class="content">
-                <!-- Metrics -->
-                <div class="metrics-grid">
-                    <div class="m-card">
-                        <div class="m-label">Total Emails Triaged</div>
-                        <div class="m-val" id="metricTotal">—</div>
-                        <div class="m-sub">inbox messages</div>
-                    </div>
-                    <div class="m-card">
-                        <div class="m-label">Draft Replies Generated</div>
-                        <div class="m-val" id="metricReplies" style="color:var(--emerald);">—</div>
-                        <div class="m-sub">ready in Gmail Drafts</div>
-                    </div>
-                    <div class="m-card">
-                        <div class="m-label">High-Priority Detected</div>
-                        <div class="m-val" id="metricHigh" style="color:var(--amber);">—</div>
-                        <div class="m-sub">urgent action items</div>
-                    </div>
-                    <div class="m-card">
-                        <div class="m-label">Spam & Phishing Blocked</div>
-                        <div class="m-val" id="metricSpam" style="color:var(--rose);">—</div>
-                        <div class="m-sub">deflected automatically</div>
-                    </div>
+                <div class="m-card">
+                    <div class="m-label">AI Drafts Prepared</div>
+                    <div class="m-val" id="metricReplies" style="color:var(--lavender-deep);">0</div>
+                    <div class="m-sub">Safe drafts ready for sign-off</div>
                 </div>
-
-                <!-- Feed Container -->
-                <div class="feed-container">
-                    <div class="feed-header">
-                        <div class="feed-title">Live Autonomous Activity Stream</div>
-                        <div class="feed-controls">
-                            <input type="text" class="search-input" id="searchInput" placeholder="Filter by subject or sender..." oninput="filterEmails()">
-                        </div>
-                    </div>
-
-                    <div class="email-list" id="emailList">
-                        <div style="padding: 40px; text-align: center; color: var(--text-muted);">
-                            Analyzing inbox stream...
-                        </div>
-                    </div>
+                <div class="m-card">
+                    <div class="m-label">High Urgency</div>
+                    <div class="m-val" id="metricHigh" style="color:#DC2626;">0</div>
+                    <div class="m-sub">Urgent personal action items</div>
+                </div>
+                <div class="m-card">
+                    <div class="m-label">Spam Blocked</div>
+                    <div class="m-val" id="metricSpam" style="color:var(--biscuit-deep);">0</div>
+                    <div class="m-sub">Deceptive & bulk filtered</div>
                 </div>
             </div>
-        </main>
-    </div>
 
-    <!-- Slide-over Drawer for Email Inspection -->
+            <!-- Feed Section -->
+            <div class="feed-container">
+                <div class="feed-header">
+                    <div class="feed-title">Real-Time Autonomous Feed</div>
+                    <div class="feed-controls">
+                        <input type="text" class="search-input" id="searchInput" placeholder="Search sender or subject..." oninput="filterEmails()">
+                    </div>
+                </div>
+
+                <div class="email-list" id="emailList">
+                    <div style="padding: 60px 20px; text-align: center; color: var(--text-muted);">
+                        <div style="font-size:24px;margin-bottom:8px;color:var(--lavender-deep);">✦</div>
+                        <div style="font-weight:600;font-size:15px;color:var(--text-heading);">Inbox Synced & Up to Date</div>
+                        <div style="font-size:13px;margin-top:4px;">New incoming emails will automatically stream here.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Slide-over Drawer -->
     <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
     <aside class="drawer" id="drawer">
         <button class="drawer-close" onclick="closeDrawer()">✕</button>
-        <div style="margin-top: 12px; margin-bottom: 20px;">
-            <div id="drawerBadges" style="display:flex;gap:8px;margin-bottom:12px;"></div>
-            <h2 id="drawerSubject" style="font-family:'Outfit',sans-serif;font-size:22px;margin-bottom:8px;color:var(--text-main);"></h2>
-            <div id="drawerSender" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-sub);"></div>
-        </div>
+        <div id="drawerBadges" style="display:flex;gap:8px;margin-bottom:14px;"></div>
+        <h2 class="drawer-subject" id="drawerSubject">Subject Line</h2>
+        <div class="drawer-sender" id="drawerSender">sender@example.com</div>
 
-        <div style="border-top:1px solid var(--border);padding-top:18px;">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--cyan);margin-bottom:6px;">
-                NEXUS AI Triage Analysis
+        <div class="drawer-card">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:0.08em;margin-bottom:6px;">
+                Triage Diagnosis
             </div>
-            <p id="drawerAnalysis" style="font-size:13.5px;color:var(--text-sub);line-height:1.6;"></p>
+            <div id="drawerAnalysis" style="font-size:13.5px;color:var(--text-heading);line-height:1.5;"></div>
         </div>
 
-        <div id="drawerReplySection" style="margin-top:24px;border-top:1px solid var(--border);padding-top:18px;">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-                <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--emerald);">
-                    Generated Response (Saved in Gmail Drafts)
-                </span>
-                <button onclick="copyReplyText()" style="background:none;border:none;color:var(--cyan);font-size:12px;cursor:pointer;font-weight:600;">
+        <div id="drawerReplySection" style="margin-top:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--lavender-deep);letter-spacing:0.08em;">
+                    Prepared Response Draft
+                </div>
+                <button onclick="copyReplyText()" style="background:none;border:none;color:var(--lavender-deep);font-size:12.5px;cursor:pointer;font-weight:600;">
                     Copy Text ⎘
                 </button>
             </div>
             <div class="reply-box" id="drawerReplyText"></div>
-            <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" style="display:inline-block;margin-top:12px;font-size:12.5px;color:var(--cyan);text-decoration:none;">
+            <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" style="display:inline-block;margin-top:14px;font-size:13px;color:var(--lavender-deep);font-weight:600;text-decoration:none;">
                 Open in Gmail Drafts ↗
             </a>
         </div>
@@ -1315,9 +1313,9 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             if (!emails.length) {
                 container.innerHTML = `
                     <div style="padding: 60px 20px; text-align: center; color: var(--text-muted);">
-                        <div style="font-size:24px;margin-bottom:8px;">✦</div>
-                        <div style="font-weight:600;font-size:15px;color:var(--text-sub);">Inbox Synced & Up to Date</div>
-                        <div style="font-size:13px;margin-top:4px;">New incoming emails will automatically appear here.</div>
+                        <div style="font-size:24px;margin-bottom:8px;color:var(--lavender-deep);">✦</div>
+                        <div style="font-weight:600;font-size:15px;color:var(--text-heading);">Inbox Synced & Up to Date</div>
+                        <div style="font-size:13px;margin-top:4px;">New incoming emails will automatically stream here.</div>
                     </div>
                 `;
                 return;
@@ -1331,7 +1329,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="badge-tag ${e.priority === 'high' ? 'b-high' : (e.priority === 'medium' ? 'b-medium' : 'b-low')}">${e.priority || 'low'}</span>
-                        <span class="badge-tag" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">${e.classification || 'normal'}</span>
+                        <span class="badge-tag b-lavender">${e.classification || 'normal'}</span>
                         ${e.reply_sent ? '<span class="badge-tag b-draft">✓ Drafted</span>' : ''}
                     </div>
                 </div>
@@ -1348,7 +1346,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             const badges = document.getElementById('drawerBadges');
             badges.innerHTML = `
                 <span class="badge-tag ${email.priority === 'high' ? 'b-high' : 'b-medium'}">${email.priority} Priority</span>
-                <span class="badge-tag" style="background:rgba(255,255,255,0.08);color:var(--text-sub);">${email.classification}</span>
+                <span class="badge-tag b-lavender">${email.classification}</span>
             `;
 
             document.getElementById('drawerAnalysis').textContent = 
@@ -1413,7 +1411,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 """
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. OWNER / ADMIN PORTAL (Executive Platform Governance)
+# 3. OWNER / ADMIN PORTAL (Light Lavender & Light Biscuit Luxury Theme)
 # ══════════════════════════════════════════════════════════════════════════════
 ADMIN_PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -1426,134 +1424,162 @@ ADMIN_PAGE = """<!DOCTYPE html>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg-void: #06080F;
-            --surface-1: #0D111D;
-            --surface-2: #141A2D;
-            --accent: #6366F1;
-            --cyan: #06B6D4;
-            --emerald: #10B981;
-            --amber: #F59E0B;
-            --rose: #F43F5E;
-            --border: rgba(99, 102, 241, 0.16);
-            --text-main: #F8FAFC;
-            --text-sub: #94A3B8;
-            --text-muted: #64748B;
+            --bg-biscuit-base: #FAF7F2;
+            --bg-biscuit-subtle: #F3EFE6;
+            --bg-biscuit-card: #FFFFFF;
+            --surface-biscuit-tint: #F7F3EC;
+            
+            --lavender-light: #F4EFFC;
+            --lavender-border: #E4D9F5;
+            --lavender-primary: #8B5CF6;
+            --lavender-deep: #7C3AED;
+            --lavender-glow: rgba(139, 92, 246, 0.20);
+
+            --biscuit-warm: #D9CBBA;
+            --biscuit-border: #E8E1D5;
+            --biscuit-accent: #B8926A;
+            --biscuit-deep: #856543;
+
+            --text-heading: #1F1728;
+            --text-body: #463D52;
+            --text-muted: #7B7088;
         }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg-void);
-            color: var(--text-main);
+            background: var(--bg-biscuit-base);
+            color: var(--text-body);
             min-height: 100vh;
-            padding: 32px 48px;
+            padding: 40px 60px;
         }
         .header {
             display: flex;
             align-items: center;
             justify-content: space-between;
+            margin-bottom: 36px;
             padding-bottom: 24px;
-            border-bottom: 1px solid var(--border);
-            margin-bottom: 32px;
+            border-bottom: 1px solid var(--biscuit-border);
         }
-        .brand-title {
+        .title {
             font-family: 'Outfit', sans-serif;
-            font-size: 26px;
+            font-size: 28px;
             font-weight: 700;
+            color: var(--text-heading);
         }
-        .btn-link {
-            padding: 8px 18px;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            text-decoration: none;
-            background: var(--surface-2);
-            color: var(--text-main);
-            border: 1px solid var(--border);
-            transition: all 0.2s;
+        .subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            margin-top: 4px;
         }
-        .btn-link:hover { border-color: var(--cyan); }
-        .grid-4 {
+        .stats-grid {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             margin-bottom: 36px;
         }
-        .card {
-            background: var(--surface-1);
-            border: 1px solid var(--border);
-            border-radius: 12px;
+        .stat-card {
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 14px;
             padding: 22px 24px;
+            box-shadow: 0 2px 10px rgba(133, 101, 67, 0.04);
         }
-        .card-table {
-            background: var(--surface-1);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 32px;
+        .stat-label {
+            font-size: 11.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
         }
-        .table-header {
-            padding: 18px 24px;
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+        .stat-value {
             font-family: 'Outfit', sans-serif;
-            font-size: 17px;
-            font-weight: 600;
+            font-size: 34px;
+            font-weight: 700;
+            color: var(--text-heading);
         }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; }
-        th { text-align: left; padding: 12px 24px; font-size: 11px; text-transform: uppercase; color: var(--text-muted); background: var(--surface-2); }
-        td { padding: 14px 24px; border-bottom: 1px solid rgba(99,102,241,0.06); }
+        .section-card {
+            background: var(--bg-biscuit-card);
+            border: 1px solid var(--biscuit-border);
+            border-radius: 16px;
+            padding: 28px;
+            margin-bottom: 32px;
+            box-shadow: 0 4px 18px rgba(133, 101, 67, 0.04);
+        }
+        .section-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 19px;
+            font-weight: 700;
+            color: var(--text-heading);
+            margin-bottom: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13.5px;
+        }
+        th {
+            text-align: left;
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--biscuit-border);
+            color: var(--text-muted);
+            font-size: 11.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--biscuit-border);
+            color: var(--text-body);
+        }
         tr:last-child td { border-bottom: none; }
-        .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-sub); }
-        .badge {
-            padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+        tr:hover td { background: var(--lavender-light); }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--lavender-deep);
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 24px;
         }
-        .b-owner { background: rgba(99,102,241,0.2); color: #C7D2FE; border: 1px solid var(--accent); }
     </style>
 </head>
 <body>
-    <header class="header">
-        <div>
-            <div class="brand-title">👑 NEXUS Platform Owner Command Center</div>
-            <div style="font-size:12.5px;color:var(--text-sub);margin-top:4px;">
-                Administrator: <span style="color:var(--cyan);font-weight:600;">{{ owner.email }}</span>
-            </div>
-        </div>
-        <div style="display:flex;gap:12px;">
-            <a href="/dashboard" class="btn-link">← Return to Dashboard</a>
-            <a href="/disconnect" class="btn-link" style="color:var(--rose);">Log Out</a>
-        </div>
-    </header>
+    <a href="/dashboard" class="back-link">← Return to Executive Dashboard</a>
 
-    <div class="grid-4">
-        <div class="card">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Registered Users</div>
-            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;">{{ total_users }}</div>
-            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Connected accounts</div>
+    <div class="header">
+        <div>
+            <h1 class="title">Platform Governance & Multi-Tenant Registry</h1>
+            <div class="subtitle">Platform Owner: Reshma Kodavali ({{ owner.email }})</div>
         </div>
-        <div class="card">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Platform Emails Triaged</div>
-            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;color:var(--cyan);">{{ total_emails }}</div>
-            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Total analyzed</div>
-        </div>
-        <div class="card">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">AI Replies Prepared</div>
-            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;color:var(--emerald);">{{ total_replies }}</div>
-            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Drafts & sends</div>
-        </div>
-        <div class="card">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Spam Blocked</div>
-            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;color:var(--rose);">{{ total_spam }}</div>
-            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Shielded</div>
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);background:var(--surface-biscuit-tint);padding:8px 16px;border-radius:8px;border:1px solid var(--biscuit-border);">
+            Active AI Engine: {{ llm_model }}
         </div>
     </div>
 
-    <!-- Registered Users -->
-    <div class="card-table">
-        <div class="table-header">
-            <span>Registered Users Directory</span>
-            <span style="font-size:12px;color:var(--emerald);font-weight:600;">● Active Deployment</span>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Total Connected Users</div>
+            <div class="stat-value" style="color:var(--lavender-deep);">{{ total_users }}</div>
         </div>
+        <div class="stat-card">
+            <div class="stat-label">Total Emails Processed</div>
+            <div class="stat-value">{{ total_emails }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Total Drafts Generated</div>
+            <div class="stat-value" style="color:#047857;">{{ total_replies }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Spam Blocked</div>
+            <div class="stat-value" style="color:var(--biscuit-deep);">{{ total_spam }}</div>
+        </div>
+    </div>
+
+    <div class="section-card">
+        <h2 class="section-title">Registered Tenants</h2>
         <table>
             <thead>
                 <tr>
@@ -1562,65 +1588,53 @@ ADMIN_PAGE = """<!DOCTYPE html>
                     <th>Role</th>
                     <th>Reply Mode</th>
                     <th>Connected At</th>
+                    <th>Last Active</th>
                 </tr>
             </thead>
             <tbody>
                 {% for u in users %}
                 <tr>
-                    <td style="font-weight:600;">{{ u.name or 'User' }}</td>
-                    <td class="mono">{{ u.email }}</td>
+                    <td style="font-weight:600;color:var(--text-heading);">{{ u.name }}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">{{ u.email }}</td>
                     <td>
-                        {% if u.email == owner.email or u.role == 'owner' %}
-                        <span class="badge b-owner">👑 Owner</span>
-                        {% else %}
-                        <span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">User</span>
-                        {% endif %}
+                        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--lavender-light);color:var(--lavender-deep);">
+                            {{ u.role|upper }}
+                        </span>
                     </td>
-                    <td class="mono">{{ u.reply_mode or 'draft' }}</td>
-                    <td class="mono">{{ (u.connected_at or '—')[:16] }}</td>
+                    <td>{{ u.reply_mode }}</td>
+                    <td style="font-size:12.5px;color:var(--text-muted);">{{ u.connected_at }}</td>
+                    <td style="font-size:12.5px;color:var(--text-muted);">{{ u.last_active }}</td>
                 </tr>
-                {% else %}
-                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:30px;">No registered users yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <!-- Global Activity Stream -->
-    <div class="card-table">
-        <div class="table-header">
-            <span>Live Platform Activity Stream (Last 15 Actions)</span>
-            <span style="font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">Engine: {{ llm_model }}</span>
-        </div>
+    <div class="section-card">
+        <h2 class="section-title">Recent Cross-Tenant Triage Telemetry</h2>
         <table>
             <thead>
                 <tr>
-                    <th>Account</th>
-                    <th>Sender</th>
+                    <th>Tenant</th>
                     <th>Subject</th>
+                    <th>Sender</th>
                     <th>Classification</th>
                     <th>Priority</th>
-                    <th>Status</th>
+                    <th>Action</th>
+                    <th>Timestamp</th>
                 </tr>
             </thead>
             <tbody>
                 {% for a in activity %}
                 <tr>
-                    <td class="mono" style="color:var(--cyan);">{{ a.user_email }}</td>
-                    <td class="mono">{{ (a.sender or '')[:24] }}</td>
-                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.subject }}</td>
-                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">{{ a.classification }}</span></td>
-                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">{{ a.priority }}</span></td>
-                    <td>
-                        {% if a.reply_sent %}
-                        <span style="color:var(--emerald);font-weight:600;font-size:12px;">✓ {{ a.status or 'Drafted' }}</span>
-                        {% else %}
-                        <span style="color:var(--text-muted);font-size:12px;">Classified</span>
-                        {% endif %}
-                    </td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--lavender-deep);">{{ a.user_email }}</td>
+                    <td style="font-weight:600;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.subject }}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">{{ a.sender }}</td>
+                    <td>{{ a.classification }}</td>
+                    <td>{{ a.priority }}</td>
+                    <td>{{ a.status }}</td>
+                    <td style="font-size:12.5px;color:var(--text-muted);">{{ a.received_at }}</td>
                 </tr>
-                {% else %}
-                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:30px;">No triage stream yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
@@ -1629,82 +1643,82 @@ ADMIN_PAGE = """<!DOCTYPE html>
 </html>
 """
 
+
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. ROUTES & API ENDPOINTS
+# Routes & Endpoints
 # ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/")
 def index():
-    if 'credentials' in session and 'user' in session:
+    if 'credentials' in session:
         return redirect(url_for('dashboard'))
-    return HOME_PAGE
+    return render_template_string(HOME_PAGE)
 
 
-@app.route("/connect")
-def connect():
+@app.route("/login")
+def login():
+    if not os.path.exists(CLIENT_SECRETS_FILE):
+        return """
+        <div style="font-family:sans-serif;max-width:600px;margin:80px auto;padding:30px;background:#FDFBF7;border:1px solid #E6DFD3;border-radius:12px;text-align:center;">
+            <h2 style="color:#DC2626;margin-bottom:12px;">credentials.json Missing</h2>
+            <p style="color:#786E64;line-height:1.6;">Please place your Google OAuth <code>credentials.json</code> file in the <code>files/</code> directory to authorize Gmail access.</p>
+            <p><a href="/" style="color:#8B5CF6;text-decoration:none;font-weight:600;">← Return to Home</a></p>
+        </div>
+        """, 400
+
     flow = Flow.from_client_secrets_file(
         CLIENT_SECRETS_FILE,
         scopes=SCOPES,
-        redirect_uri=url_for('callback', _external=True)
+        redirect_uri=url_for('oauth2callback', _external=True)
     )
     auth_url, state = flow.authorization_url(
         access_type='offline',
-        include_granted_scopes='true',
-        prompt='consent'
+        prompt='consent',
+        include_granted_scopes='true'
     )
     session['state'] = state
-    session['code_verifier'] = flow.code_verifier
     return redirect(auth_url)
 
 
-@app.route("/callback")
-def callback():
+@app.route("/oauth2callback")
+def oauth2callback():
+    state = session.get('state')
     flow = Flow.from_client_secrets_file(
         CLIENT_SECRETS_FILE,
         scopes=SCOPES,
-        state=session['state'],
-        redirect_uri=url_for('callback', _external=True)
+        state=state,
+        redirect_uri=url_for('oauth2callback', _external=True)
     )
-    flow.code_verifier = session.get('code_verifier')
     flow.fetch_token(authorization_response=request.url)
-    creds = flow.credentials
+
+    credentials = flow.credentials
     session['credentials'] = {
-        'token': creds.token,
-        'refresh_token': creds.refresh_token,
-        'token_uri': creds.token_uri,
-        'client_id': creds.client_id,
-        'client_secret': creds.client_secret,
-        'scopes': list(creds.scopes)
+        'token': credentials.token,
+        'refresh_token': credentials.refresh_token,
+        'token_uri': credentials.token_uri,
+        'client_id': credentials.client_id,
+        'client_secret': credentials.client_secret,
+        'scopes': credentials.scopes
     }
-    session.permanent = True
     connected_at = int(_time.time())
     session['connected_at'] = connected_at
 
-    # Discover user identity
-    user_email = ""
-    user_name  = ""
-    user_pic   = ""
-    try:
-        gmail_service = build('gmail', 'v1', credentials=creds)
-        prof = gmail_service.users().getProfile(userId='me').execute()
-        user_email = prof.get('emailAddress', '').lower()
-    except Exception as e:
-        print(f"Notice: Gmail profile: {e}")
+    service = build('gmail', 'v1', credentials=credentials)
+    prof = service.users().getProfile(userId='me').execute()
+    user_email = prof.get('emailAddress', '').lower()
 
+    user_name = user_email.split('@')[0].capitalize()
+    user_pic  = ""
     try:
-        oauth_service = build('oauth2', 'v2', credentials=creds)
-        uinfo = oauth_service.userinfo().get().execute()
-        user_name = uinfo.get('name') or uinfo.get('given_name') or ""
-        user_pic  = uinfo.get('picture', '')
-        if not user_email:
-            user_email = uinfo.get('email', '').lower()
+        oauth_service = build('oauth2', 'v2', credentials=credentials)
+        user_info = oauth_service.userinfo().get().execute()
+        user_name = user_info.get('name', user_name)
+        user_pic  = user_info.get('picture', "")
     except Exception:
         pass
 
-    if not user_name and user_email:
-        user_name = user_email.split('@')[0].capitalize()
+    role = "owner" if user_email == OWNER_EMAIL else "user"
 
-    role = 'owner' if (user_email and user_email == OWNER_EMAIL) else 'user'
     session['user'] = {
         'email': user_email,
         'name': user_name,
@@ -1759,6 +1773,7 @@ def dashboard():
         }
         session['user'] = user
 
+    _ensure_background_thread()
     with _agent_lock:
         if not _agent_state.get("credentials"):
             _agent_state["credentials"]  = dict(session['credentials'])
@@ -1777,10 +1792,10 @@ def admin_portal():
         return redirect(url_for('index'))
     if user.get('role') != 'owner' and user.get('email', '').lower() != OWNER_EMAIL:
         return """
-        <div style="font-family:sans-serif;text-align:center;margin-top:120px;color:#F87171;">
+        <div style="font-family:sans-serif;text-align:center;margin-top:120px;color:#DC2626;">
             <h1 style="font-size:32px;">403 Forbidden: Owner Access Required</h1>
-            <p style="color:#9A9189;margin-top:8px;">Only the platform owner can access the Administrator Command Center.</p>
-            <p><a href="/dashboard" style="color:#6366F1;text-decoration:none;font-weight:600;">← Return to Dashboard</a></p>
+            <p style="color:#786E64;margin-top:8px;">Only the platform owner can access the Administrator Command Center.</p>
+            <p><a href="/dashboard" style="color:#8B5CF6;text-decoration:none;font-weight:600;">← Return to Dashboard</a></p>
         </div>
         """, 403
 
