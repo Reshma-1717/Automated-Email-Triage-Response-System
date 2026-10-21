@@ -1,6 +1,6 @@
 """
 NEXUS AI — Autonomous Executive Email Intelligence
-World-Class Multi-Tenant Platform with Light Lavender & Light Biscuit Luxury Executive UI.
+World-Class Multi-Tenant Platform with Light Cream & Medium Shy Brown Luxury Executive UI.
 """
 
 from flask import Flask, redirect, request, session, url_for, render_template_string, jsonify
@@ -375,7 +375,7 @@ _ensure_background_thread()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 1. LANDING PAGE (Light Lavender & Light Biscuit Luxury Executive Theme)
+# 1. LANDING PAGE (Light Cream & Medium Shy Brown Luxury Theme)
 # ══════════════════════════════════════════════════════════════════════════════
 HOME_PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -388,49 +388,48 @@ HOME_PAGE = """<!DOCTYPE html>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            /* Light Biscuit & Light Lavender Luxury Palette (Zero Blue) */
-            --bg-biscuit-base: #FAF7F2;
-            --bg-biscuit-subtle: #F3EFE6;
-            --bg-biscuit-card: #FFFFFF;
-            --surface-biscuit-tint: #F7F3EC;
-            
-            --lavender-light: #F4EFFC;
-            --lavender-border: #E4D9F5;
-            --lavender-primary: #8B5CF6;
-            --lavender-deep: #7C3AED;
-            --lavender-glow: rgba(139, 92, 246, 0.22);
+            /* Light Cream & Medium Shy Brown Luxury Palette */
+            --bg-cream-base: #FBF8F3;
+            --bg-cream-subtle: #F5EFE6;
+            --bg-cream-card: #FFFFFF;
+            --surface-cream-tint: #EFE7DC;
+            --border-cream: #E6DDCE;
 
-            --biscuit-warm: #D9CBBA;
-            --biscuit-border: #E8E1D5;
-            --biscuit-accent: #B8926A;
-            --biscuit-deep: #856543;
+            /* Medium Shy Brown (Gentle, quiet, modest luxury hazelnut-taupe brown) */
+            --brown-shy: #8C6D58;
+            --brown-primary: #7A5C47;
+            --brown-deep: #634835;
+            --brown-light: #F2EBE4;
+            --brown-border: #DCCEC2;
+            --brown-glow: rgba(140, 109, 88, 0.18);
 
-            --text-heading: #1F1728;
-            --text-body: #463D52;
-            --text-muted: #7B7088;
-            --text-dim: #A399AF;
+            /* Typography */
+            --text-heading: #2A211B;
+            --text-body: #4D3E35;
+            --text-muted: #827165;
+            --text-dim: #AC9E93;
         }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg-biscuit-base);
+            background: var(--bg-cream-base);
             color: var(--text-body);
             min-height: 100vh;
             overflow-x: hidden;
             line-height: 1.55;
         }
-        /* Soft Ambient Glow (Light Lavender & Light Biscuit) */
+        /* Ambient Glow (Soft Cream and Delicate Shy Brown Mist) */
         .ambient-glow {
             position: fixed;
-            width: 750px;
-            height: 750px;
+            width: 780px;
+            height: 780px;
             border-radius: 50%;
-            filter: blur(140px);
+            filter: blur(150px);
             pointer-events: none;
             z-index: 0;
-            opacity: 0.35;
+            opacity: 0.40;
         }
-        .glow-1 { top: -200px; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, #E8DEFA 0%, #F5EDE0 100%); }
-        .glow-2 { bottom: -120px; right: -80px; background: radial-gradient(circle, #DDD0F8 0%, #EFE5D8 70%); }
+        .glow-1 { top: -220px; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, #EFE4D6 0%, #FAF2E6 100%); }
+        .glow-2 { bottom: -140px; right: -100px; background: radial-gradient(circle, #E3D5C8 0%, #F5EDE4 70%); }
 
         nav {
             position: fixed;
@@ -440,10 +439,10 @@ HOME_PAGE = """<!DOCTYPE html>
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(250, 247, 242, 0.88);
-            backdrop-filter: blur(18px);
-            -webkit-backdrop-filter: blur(18px);
-            border-bottom: 1px solid var(--biscuit-border);
+            background: rgba(251, 248, 243, 0.90);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-cream);
         }
         .brand {
             display: flex;
@@ -455,7 +454,7 @@ HOME_PAGE = """<!DOCTYPE html>
             width: 40px;
             height: 40px;
             border-radius: 12px;
-            background: linear-gradient(135deg, var(--lavender-primary), var(--biscuit-accent));
+            background: linear-gradient(135deg, var(--brown-shy), var(--brown-deep));
             display: flex;
             align-items: center;
             justify-content: center;
@@ -463,7 +462,7 @@ HOME_PAGE = """<!DOCTYPE html>
             font-weight: 800;
             font-size: 20px;
             color: #FFF;
-            box-shadow: 0 4px 16px var(--lavender-glow);
+            box-shadow: 0 4px 14px var(--brown-glow);
         }
         .brand-name {
             font-family: 'Outfit', sans-serif;
@@ -477,10 +476,10 @@ HOME_PAGE = """<!DOCTYPE html>
             font-weight: 700;
             padding: 3px 9px;
             border-radius: 20px;
-            background: var(--lavender-light);
-            color: var(--lavender-deep);
-            border: 1px solid var(--lavender-border);
-            letter-spacing: 0.04em;
+            background: var(--brown-light);
+            color: var(--brown-primary);
+            border: 1px solid var(--brown-border);
+            letter-spacing: 0.05em;
         }
         .nav-cta {
             display: inline-flex;
@@ -491,12 +490,12 @@ HOME_PAGE = """<!DOCTYPE html>
             font-size: 14px;
             font-weight: 600;
             text-decoration: none;
-            background: var(--lavender-deep);
+            background: var(--brown-primary);
             color: #FFF;
-            box-shadow: 0 4px 16px var(--lavender-glow);
+            box-shadow: 0 4px 14px var(--brown-glow);
             transition: all 0.25s ease;
         }
-        .nav-cta:hover { transform: translateY(-2px); background: #6D28D9; box-shadow: 0 6px 22px var(--lavender-glow); }
+        .nav-cta:hover { transform: translateY(-2px); background: var(--brown-deep); box-shadow: 0 6px 20px var(--brown-glow); }
 
         /* Hero */
         .hero {
@@ -504,7 +503,7 @@ HOME_PAGE = """<!DOCTYPE html>
             z-index: 10;
             max-width: 1200px;
             margin: 0 auto;
-            padding: 150px 24px 80px;
+            padding: 155px 24px 80px;
             text-align: center;
         }
         .pill-badge {
@@ -513,11 +512,11 @@ HOME_PAGE = """<!DOCTYPE html>
             gap: 8px;
             padding: 6px 18px;
             border-radius: 30px;
-            background: var(--lavender-light);
-            border: 1px solid var(--lavender-border);
+            background: var(--brown-light);
+            border: 1px solid var(--brown-border);
             font-size: 12.5px;
             font-weight: 600;
-            color: var(--lavender-deep);
+            color: var(--brown-primary);
             margin-bottom: 24px;
         }
         .hero-title {
@@ -533,7 +532,7 @@ HOME_PAGE = """<!DOCTYPE html>
             color: var(--text-heading);
         }
         .gradient-text {
-            background: linear-gradient(135deg, #1F1728 20%, var(--lavender-deep) 65%, var(--biscuit-deep) 100%);
+            background: linear-gradient(135deg, #2A211B 20%, var(--brown-primary) 65%, #A27B5C 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -559,12 +558,12 @@ HOME_PAGE = """<!DOCTYPE html>
             font-size: 16px;
             font-weight: 700;
             text-decoration: none;
-            background: linear-gradient(135deg, var(--lavender-deep), #8B5CF6);
+            background: linear-gradient(135deg, var(--brown-primary), var(--brown-deep));
             color: #FFF;
-            box-shadow: 0 8px 24px var(--lavender-glow);
+            box-shadow: 0 8px 24px var(--brown-glow);
             transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         }
-        .btn-large:hover { transform: translateY(-3px); box-shadow: 0 12px 32px var(--lavender-glow); background: #6D28D9; }
+        .btn-large:hover { transform: translateY(-3px); box-shadow: 0 12px 30px var(--brown-glow); background: var(--brown-deep); }
         .btn-outline {
             display: inline-flex;
             align-items: center;
@@ -574,13 +573,13 @@ HOME_PAGE = """<!DOCTYPE html>
             font-size: 15px;
             font-weight: 600;
             text-decoration: none;
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             color: var(--text-heading);
             transition: all 0.25s ease;
-            box-shadow: 0 2px 8px rgba(133, 101, 67, 0.06);
+            box-shadow: 0 2px 8px rgba(122, 92, 71, 0.05);
         }
-        .btn-outline:hover { border-color: var(--lavender-primary); color: var(--lavender-deep); transform: translateY(-2px); }
+        .btn-outline:hover { border-color: var(--brown-shy); color: var(--brown-primary); transform: translateY(-2px); }
 
         /* Feature Matrix */
         .matrix-section {
@@ -596,31 +595,31 @@ HOME_PAGE = """<!DOCTYPE html>
             gap: 24px;
         }
         .matrix-card {
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             border-radius: 16px;
             padding: 36px 30px;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 18px rgba(133, 101, 67, 0.05);
+            box-shadow: 0 4px 18px rgba(122, 92, 71, 0.05);
             position: relative;
         }
         .matrix-card:hover {
-            border-color: var(--lavender-border);
+            border-color: var(--brown-border);
             transform: translateY(-4px);
-            box-shadow: 0 12px 30px var(--lavender-glow);
+            box-shadow: 0 12px 30px var(--brown-glow);
         }
         .matrix-icon {
             width: 48px;
             height: 48px;
             border-radius: 12px;
-            background: var(--lavender-light);
-            border: 1px solid var(--lavender-border);
+            background: var(--brown-light);
+            border: 1px solid var(--brown-border);
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 22px;
             margin-bottom: 20px;
-            color: var(--lavender-deep);
+            color: var(--brown-primary);
         }
         .matrix-title {
             font-family: 'Outfit', sans-serif;
@@ -638,16 +637,16 @@ HOME_PAGE = """<!DOCTYPE html>
         footer {
             position: relative;
             z-index: 10;
-            border-top: 1px solid var(--biscuit-border);
+            border-top: 1px solid var(--border-cream);
             padding: 36px 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
             font-size: 13.5px;
             color: var(--text-muted);
-            background: var(--bg-biscuit-subtle);
+            background: var(--bg-cream-subtle);
         }
-        footer a { color: var(--lavender-deep); text-decoration: none; font-weight: 600; }
+        footer a { color: var(--brown-primary); text-decoration: none; font-weight: 600; }
 
         @media (max-width: 900px) {
             nav { padding: 16px 24px; }
@@ -721,7 +720,7 @@ HOME_PAGE = """<!DOCTYPE html>
     </section>
 
     <footer>
-        <div>© 2026 NEXUS Intelligence Inc. • Engineered for Executive Productivity</div>
+        <div>© 2026 NEXUS Intelligence Inc. • Light Cream & Medium Shy Brown Atelier Edition</div>
         <div>Platform Owner: <a href="/admin">Administrator Portal</a></div>
     </footer>
 </body>
@@ -729,7 +728,7 @@ HOME_PAGE = """<!DOCTYPE html>
 """
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 2. DASHBOARD PAGE (Light Lavender & Light Biscuit Luxury Executive Theme)
+# 2. DASHBOARD PAGE (Light Cream & Medium Shy Brown Luxury Theme)
 # ══════════════════════════════════════════════════════════════════════════════
 DASHBOARD_PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -742,31 +741,30 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            /* Light Biscuit & Light Lavender Luxury Palette (Zero Blue) */
-            --bg-biscuit-base: #FAF7F2;
-            --bg-biscuit-subtle: #F3EFE6;
-            --bg-biscuit-card: #FFFFFF;
-            --surface-biscuit-tint: #F7F3EC;
-            
-            --lavender-light: #F4EFFC;
-            --lavender-border: #E4D9F5;
-            --lavender-primary: #8B5CF6;
-            --lavender-deep: #7C3AED;
-            --lavender-glow: rgba(139, 92, 246, 0.20);
+            /* Light Cream & Medium Shy Brown Luxury Palette */
+            --bg-cream-base: #FBF8F3;
+            --bg-cream-subtle: #F5EFE6;
+            --bg-cream-card: #FFFFFF;
+            --surface-cream-tint: #EFE7DC;
+            --border-cream: #E6DDCE;
 
-            --biscuit-warm: #D9CBBA;
-            --biscuit-border: #E8E1D5;
-            --biscuit-accent: #B8926A;
-            --biscuit-deep: #856543;
+            /* Medium Shy Brown */
+            --brown-shy: #8C6D58;
+            --brown-primary: #7A5C47;
+            --brown-deep: #634835;
+            --brown-light: #F2EBE4;
+            --brown-border: #DCCEC2;
+            --brown-glow: rgba(140, 109, 88, 0.18);
 
-            --text-heading: #1F1728;
-            --text-body: #463D52;
-            --text-muted: #7B7088;
-            --text-dim: #A399AF;
+            /* Typography */
+            --text-heading: #2A211B;
+            --text-body: #4D3E35;
+            --text-muted: #827165;
+            --text-dim: #AC9E93;
         }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg-biscuit-base);
+            background: var(--bg-cream-base);
             color: var(--text-body);
             min-height: 100vh;
             display: grid;
@@ -776,8 +774,8 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 
         /* ── Left Sidebar ── */
         .sidebar {
-            background: var(--bg-biscuit-subtle);
-            border-right: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-subtle);
+            border-right: 1px solid var(--border-cream);
             display: flex;
             flex-direction: column;
             justify-content: space-between;
@@ -794,10 +792,10 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
         .brand-icon {
             width: 36px; height: 36px;
             border-radius: 10px;
-            background: linear-gradient(135deg, var(--lavender-primary), var(--biscuit-accent));
+            background: linear-gradient(135deg, var(--brown-shy), var(--brown-deep));
             display: flex; align-items: center; justify-content: center;
             font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 18px; color: #FFF;
-            box-shadow: 0 4px 12px var(--lavender-glow);
+            box-shadow: 0 4px 12px var(--brown-glow);
         }
         .brand-name {
             font-family: 'Outfit', sans-serif;
@@ -824,31 +822,31 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
         }
         .nav-item:hover {
             color: var(--text-heading);
-            background: var(--surface-biscuit-tint);
+            background: var(--surface-cream-tint);
         }
         .nav-item.active {
-            color: var(--lavender-deep);
-            background: var(--lavender-light);
-            border: 1px solid var(--lavender-border);
+            color: var(--brown-primary);
+            background: var(--brown-light);
+            border: 1px solid var(--brown-border);
         }
 
         .user-card {
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             border-radius: 12px;
             padding: 16px;
             display: flex;
             align-items: center;
             gap: 12px;
-            box-shadow: 0 2px 8px rgba(133, 101, 67, 0.04);
+            box-shadow: 0 2px 8px rgba(122, 92, 71, 0.05);
         }
         .user-avatar {
             width: 42px; height: 42px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--lavender-light), var(--biscuit-warm));
-            border: 1px solid var(--lavender-border);
+            background: linear-gradient(135deg, var(--brown-light), var(--surface-cream-tint));
+            border: 1px solid var(--brown-border);
             display: flex; align-items: center; justify-content: center;
-            font-weight: 700; color: var(--lavender-deep);
+            font-weight: 700; color: var(--brown-primary);
             overflow: hidden;
             flex-shrink: 0;
         }
@@ -861,7 +859,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
         .user-role-badge {
             font-size: 10px; font-weight: 700; text-transform: uppercase;
             padding: 2px 7px; border-radius: 4px;
-            background: var(--lavender-light); color: var(--lavender-deep);
+            background: var(--brown-light); color: var(--brown-primary);
             display: inline-block; margin-top: 3px;
         }
 
@@ -871,15 +869,15 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             flex-direction: column;
             overflow-y: auto;
             max-height: 100vh;
-            background: var(--bg-biscuit-base);
+            background: var(--bg-cream-base);
         }
         .topbar {
             padding: 22px 44px;
-            border-bottom: 1px solid var(--biscuit-border);
+            border-bottom: 1px solid var(--border-cream);
             display: flex;
             align-items: center;
             justify-content: space-between;
-            background: rgba(250, 247, 242, 0.9);
+            background: rgba(251, 248, 243, 0.92);
             backdrop-filter: blur(16px);
             -webkit-backdrop-filter: blur(16px);
             position: sticky; top: 0; z-index: 50;
@@ -890,20 +888,20 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             gap: 8px;
             padding: 6px 16px;
             border-radius: 20px;
-            background: var(--lavender-light);
-            border: 1px solid var(--lavender-border);
+            background: var(--brown-light);
+            border: 1px solid var(--brown-border);
             font-size: 12.5px;
-            color: var(--lavender-deep);
+            color: var(--brown-primary);
             font-weight: 600;
         }
         .pulse-dot {
             width: 8px; height: 8px;
             border-radius: 50%;
-            background: var(--lavender-deep);
-            box-shadow: 0 0 10px var(--lavender-deep);
-            animation: pulse-lavender 1.8s infinite;
+            background: var(--brown-primary);
+            box-shadow: 0 0 10px var(--brown-primary);
+            animation: pulse-shy-brown 1.8s infinite;
         }
-        @keyframes pulse-lavender {
+        @keyframes pulse-shy-brown {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.35; transform: scale(1.35); }
         }
@@ -916,10 +914,10 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             font-size: 12.5px;
             color: var(--text-muted);
             font-family: 'JetBrains Mono', monospace;
-            background: var(--surface-biscuit-tint);
+            background: var(--surface-cream-tint);
             padding: 6px 12px;
             border-radius: 6px;
-            border: 1px solid var(--biscuit-border);
+            border: 1px solid var(--border-cream);
         }
         .btn-sync {
             display: inline-flex;
@@ -929,14 +927,14 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             border-radius: 10px;
             font-size: 13.5px;
             font-weight: 600;
-            background: var(--lavender-deep);
+            background: var(--brown-primary);
             color: #FFF;
             border: none;
             cursor: pointer;
-            box-shadow: 0 4px 14px var(--lavender-glow);
+            box-shadow: 0 4px 14px var(--brown-glow);
             transition: all 0.2s;
         }
-        .btn-sync:hover { transform: translateY(-1px); background: #6D28D9; box-shadow: 0 6px 20px var(--lavender-glow); }
+        .btn-sync:hover { transform: translateY(-1px); background: var(--brown-deep); box-shadow: 0 6px 20px var(--brown-glow); }
 
         .content {
             padding: 36px 44px;
@@ -950,16 +948,16 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             margin-bottom: 36px;
         }
         .m-card {
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             border-radius: 14px;
             padding: 22px 24px;
             position: relative;
             overflow: hidden;
             transition: all 0.25s;
-            box-shadow: 0 3px 14px rgba(133, 101, 67, 0.04);
+            box-shadow: 0 3px 14px rgba(122, 92, 71, 0.04);
         }
-        .m-card:hover { border-color: var(--lavender-border); transform: translateY(-2px); box-shadow: 0 8px 24px var(--lavender-glow); }
+        .m-card:hover { border-color: var(--brown-border); transform: translateY(-2px); box-shadow: 0 8px 24px var(--brown-glow); }
         .m-label {
             font-size: 11.5px;
             font-weight: 700;
@@ -982,15 +980,15 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 
         /* ── Feed Section ── */
         .feed-container {
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             border-radius: 16px;
             overflow: hidden;
-            box-shadow: 0 4px 20px rgba(133, 101, 67, 0.04);
+            box-shadow: 0 4px 20px rgba(122, 92, 71, 0.04);
         }
         .feed-header {
             padding: 22px 28px;
-            border-bottom: 1px solid var(--biscuit-border);
+            border-bottom: 1px solid var(--border-cream);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -1008,8 +1006,8 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             gap: 12px;
         }
         .search-input {
-            background: var(--surface-biscuit-tint);
-            border: 1px solid var(--biscuit-border);
+            background: var(--surface-cream-tint);
+            border: 1px solid var(--border-cream);
             border-radius: 8px;
             padding: 8px 16px;
             font-size: 13px;
@@ -1018,13 +1016,13 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             width: 240px;
             transition: all 0.2s;
         }
-        .search-input:focus { border-color: var(--lavender-primary); background: #FFF; box-shadow: 0 0 0 3px var(--lavender-glow); }
+        .search-input:focus { border-color: var(--brown-shy); background: #FFF; box-shadow: 0 0 0 3px var(--brown-glow); }
 
         /* Email Rows */
         .email-list { display: flex; flex-direction: column; }
         .email-row {
             padding: 18px 28px;
-            border-bottom: 1px solid var(--biscuit-border);
+            border-bottom: 1px solid var(--border-cream);
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -1033,7 +1031,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             background: #FFF;
         }
         .email-row:last-child { border-bottom: none; }
-        .email-row:hover { background: var(--lavender-light); }
+        .email-row:hover { background: var(--brown-light); }
         .email-main-info { flex: 1; min-width: 0; padding-right: 24px; }
         .email-subject {
             font-size: 14.5px;
@@ -1055,16 +1053,16 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             text-transform: uppercase;
             letter-spacing: 0.05em;
         }
-        .b-high { background: #FEE2E2; color: #DC2626; border: 1px solid #FECACA; }
-        .b-medium { background: #FEF3C7; color: #B45309; border: 1px solid #FDE68A; }
-        .b-low { background: var(--surface-biscuit-tint); color: var(--text-muted); border: 1px solid var(--biscuit-border); }
-        .b-draft { background: #ECFDF5; color: #047857; border: 1px solid #A7F3D0; }
-        .b-lavender { background: var(--lavender-light); color: var(--lavender-deep); border: 1px solid var(--lavender-border); }
+        .b-high { background: #FDE8E4; color: #C84B31; border: 1px solid #F6CBC4; }
+        .b-medium { background: #FAF1E4; color: #9A6B2F; border: 1px solid #EED9BE; }
+        .b-low { background: var(--surface-cream-tint); color: var(--text-muted); border: 1px solid var(--border-cream); }
+        .b-draft { background: #F2F7EA; color: #4D7C0F; border: 1px solid #D4E7BF; }
+        .b-brown { background: var(--brown-light); color: var(--brown-primary); border: 1px solid var(--brown-border); }
 
         /* Slide-over Drawer Modal */
         .drawer-overlay {
             position: fixed; inset: 0;
-            background: rgba(31, 23, 40, 0.45);
+            background: rgba(42, 33, 27, 0.45);
             backdrop-filter: blur(6px);
             -webkit-backdrop-filter: blur(6px);
             z-index: 200;
@@ -1078,8 +1076,8 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             width: 560px;
             max-width: 92vw;
             background: #FFFFFF;
-            border-left: 1px solid var(--biscuit-border);
-            box-shadow: -10px 0 40px rgba(31, 23, 40, 0.15);
+            border-left: 1px solid var(--border-cream);
+            box-shadow: -10px 0 40px rgba(42, 33, 27, 0.15);
             z-index: 210;
             padding: 36px 32px;
             overflow-y: auto;
@@ -1090,8 +1088,8 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
         .drawer.active { transform: translateX(0); }
         .drawer-close {
             position: absolute; top: 24px; right: 24px;
-            background: var(--surface-biscuit-tint);
-            border: 1px solid var(--biscuit-border);
+            background: var(--surface-cream-tint);
+            border: 1px solid var(--border-cream);
             color: var(--text-muted);
             width: 34px; height: 34px;
             border-radius: 8px;
@@ -1100,7 +1098,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             display: flex; align-items: center; justify-content: center;
             transition: all 0.2s;
         }
-        .drawer-close:hover { color: var(--text-heading); border-color: var(--lavender-primary); background: var(--lavender-light); }
+        .drawer-close:hover { color: var(--text-heading); border-color: var(--brown-shy); background: var(--brown-light); }
         .drawer-subject {
             font-family: 'Outfit', sans-serif;
             font-size: 22px;
@@ -1116,15 +1114,15 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             margin-bottom: 24px;
         }
         .drawer-card {
-            background: var(--surface-biscuit-tint);
-            border: 1px solid var(--biscuit-border);
+            background: var(--surface-cream-tint);
+            border: 1px solid var(--border-cream);
             border-radius: 12px;
             padding: 20px;
             margin-bottom: 24px;
         }
         .reply-box {
-            background: var(--lavender-light);
-            border: 1px solid var(--lavender-border);
+            background: var(--brown-light);
+            border: 1px solid var(--brown-border);
             border-radius: 10px;
             padding: 16px 20px;
             font-size: 13.5px;
@@ -1189,7 +1187,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 
             <div class="action-cluster">
                 <div class="countdown-indicator">
-                    Next scan: <span id="countdown" style="font-weight:700;color:var(--lavender-deep);">15</span>s
+                    Next scan: <span id="countdown" style="font-weight:700;color:var(--brown-primary);">15</span>s
                 </div>
                 <button class="btn-sync" id="syncBtn" onclick="triggerManualSync()">
                     <span>⚡</span> Force Sync
@@ -1207,17 +1205,17 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
                 </div>
                 <div class="m-card">
                     <div class="m-label">AI Drafts Prepared</div>
-                    <div class="m-val" id="metricReplies" style="color:var(--lavender-deep);">0</div>
+                    <div class="m-val" id="metricReplies" style="color:var(--brown-primary);">0</div>
                     <div class="m-sub">Safe drafts ready for sign-off</div>
                 </div>
                 <div class="m-card">
                     <div class="m-label">High Urgency</div>
-                    <div class="m-val" id="metricHigh" style="color:#DC2626;">0</div>
+                    <div class="m-val" id="metricHigh" style="color:#C84B31;">0</div>
                     <div class="m-sub">Urgent personal action items</div>
                 </div>
                 <div class="m-card">
                     <div class="m-label">Spam Blocked</div>
-                    <div class="m-val" id="metricSpam" style="color:var(--biscuit-deep);">0</div>
+                    <div class="m-val" id="metricSpam" style="color:var(--brown-shy);">0</div>
                     <div class="m-sub">Deceptive & bulk filtered</div>
                 </div>
             </div>
@@ -1233,7 +1231,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 
                 <div class="email-list" id="emailList">
                     <div style="padding: 60px 20px; text-align: center; color: var(--text-muted);">
-                        <div style="font-size:24px;margin-bottom:8px;color:var(--lavender-deep);">✦</div>
+                        <div style="font-size:24px;margin-bottom:8px;color:var(--brown-primary);">✦</div>
                         <div style="font-weight:600;font-size:15px;color:var(--text-heading);">Inbox Synced & Up to Date</div>
                         <div style="font-size:13px;margin-top:4px;">New incoming emails will automatically stream here.</div>
                     </div>
@@ -1259,15 +1257,15 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 
         <div id="drawerReplySection" style="margin-top:10px;">
             <div style="display:flex;align-items:center;justify-content:space-between;">
-                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--lavender-deep);letter-spacing:0.08em;">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--brown-primary);letter-spacing:0.08em;">
                     Prepared Response Draft
                 </div>
-                <button onclick="copyReplyText()" style="background:none;border:none;color:var(--lavender-deep);font-size:12.5px;cursor:pointer;font-weight:600;">
+                <button onclick="copyReplyText()" style="background:none;border:none;color:var(--brown-primary);font-size:12.5px;cursor:pointer;font-weight:600;">
                     Copy Text ⎘
                 </button>
             </div>
             <div class="reply-box" id="drawerReplyText"></div>
-            <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" style="display:inline-block;margin-top:14px;font-size:13px;color:var(--lavender-deep);font-weight:600;text-decoration:none;">
+            <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" style="display:inline-block;margin-top:14px;font-size:13px;color:var(--brown-primary);font-weight:600;text-decoration:none;">
                 Open in Gmail Drafts ↗
             </a>
         </div>
@@ -1313,7 +1311,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             if (!emails.length) {
                 container.innerHTML = `
                     <div style="padding: 60px 20px; text-align: center; color: var(--text-muted);">
-                        <div style="font-size:24px;margin-bottom:8px;color:var(--lavender-deep);">✦</div>
+                        <div style="font-size:24px;margin-bottom:8px;color:var(--brown-primary);">✦</div>
                         <div style="font-weight:600;font-size:15px;color:var(--text-heading);">Inbox Synced & Up to Date</div>
                         <div style="font-size:13px;margin-top:4px;">New incoming emails will automatically stream here.</div>
                     </div>
@@ -1329,7 +1327,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
                     </div>
                     <div style="display:flex;align-items:center;gap:8px;">
                         <span class="badge-tag ${e.priority === 'high' ? 'b-high' : (e.priority === 'medium' ? 'b-medium' : 'b-low')}">${e.priority || 'low'}</span>
-                        <span class="badge-tag b-lavender">${e.classification || 'normal'}</span>
+                        <span class="badge-tag b-brown">${e.classification || 'normal'}</span>
                         ${e.reply_sent ? '<span class="badge-tag b-draft">✓ Drafted</span>' : ''}
                     </div>
                 </div>
@@ -1346,7 +1344,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
             const badges = document.getElementById('drawerBadges');
             badges.innerHTML = `
                 <span class="badge-tag ${email.priority === 'high' ? 'b-high' : 'b-medium'}">${email.priority} Priority</span>
-                <span class="badge-tag b-lavender">${email.classification}</span>
+                <span class="badge-tag b-brown">${email.classification}</span>
             `;
 
             document.getElementById('drawerAnalysis').textContent = 
@@ -1411,7 +1409,7 @@ DASHBOARD_PAGE = """<!DOCTYPE html>
 """
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 3. OWNER / ADMIN PORTAL (Light Lavender & Light Biscuit Luxury Theme)
+# 3. OWNER / ADMIN PORTAL (Light Cream & Medium Shy Brown Luxury Theme)
 # ══════════════════════════════════════════════════════════════════════════════
 ADMIN_PAGE = """<!DOCTYPE html>
 <html lang="en">
@@ -1424,29 +1422,29 @@ ADMIN_PAGE = """<!DOCTYPE html>
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --bg-biscuit-base: #FAF7F2;
-            --bg-biscuit-subtle: #F3EFE6;
-            --bg-biscuit-card: #FFFFFF;
-            --surface-biscuit-tint: #F7F3EC;
-            
-            --lavender-light: #F4EFFC;
-            --lavender-border: #E4D9F5;
-            --lavender-primary: #8B5CF6;
-            --lavender-deep: #7C3AED;
-            --lavender-glow: rgba(139, 92, 246, 0.20);
+            /* Light Cream & Medium Shy Brown Luxury Palette */
+            --bg-cream-base: #FBF8F3;
+            --bg-cream-subtle: #F5EFE6;
+            --bg-cream-card: #FFFFFF;
+            --surface-cream-tint: #EFE7DC;
+            --border-cream: #E6DDCE;
 
-            --biscuit-warm: #D9CBBA;
-            --biscuit-border: #E8E1D5;
-            --biscuit-accent: #B8926A;
-            --biscuit-deep: #856543;
+            /* Medium Shy Brown */
+            --brown-shy: #8C6D58;
+            --brown-primary: #7A5C47;
+            --brown-deep: #634835;
+            --brown-light: #F2EBE4;
+            --brown-border: #DCCEC2;
+            --brown-glow: rgba(140, 109, 88, 0.18);
 
-            --text-heading: #1F1728;
-            --text-body: #463D52;
-            --text-muted: #7B7088;
+            /* Typography */
+            --text-heading: #2A211B;
+            --text-body: #4D3E35;
+            --text-muted: #827165;
         }
         body {
             font-family: 'Plus Jakarta Sans', sans-serif;
-            background: var(--bg-biscuit-base);
+            background: var(--bg-cream-base);
             color: var(--text-body);
             min-height: 100vh;
             padding: 40px 60px;
@@ -1457,7 +1455,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
             justify-content: space-between;
             margin-bottom: 36px;
             padding-bottom: 24px;
-            border-bottom: 1px solid var(--biscuit-border);
+            border-bottom: 1px solid var(--border-cream);
         }
         .title {
             font-family: 'Outfit', sans-serif;
@@ -1477,11 +1475,11 @@ ADMIN_PAGE = """<!DOCTYPE html>
             margin-bottom: 36px;
         }
         .stat-card {
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             border-radius: 14px;
             padding: 22px 24px;
-            box-shadow: 0 2px 10px rgba(133, 101, 67, 0.04);
+            box-shadow: 0 2px 10px rgba(122, 92, 71, 0.04);
         }
         .stat-label {
             font-size: 11.5px;
@@ -1498,12 +1496,12 @@ ADMIN_PAGE = """<!DOCTYPE html>
             color: var(--text-heading);
         }
         .section-card {
-            background: var(--bg-biscuit-card);
-            border: 1px solid var(--biscuit-border);
+            background: var(--bg-cream-card);
+            border: 1px solid var(--border-cream);
             border-radius: 16px;
             padding: 28px;
             margin-bottom: 32px;
-            box-shadow: 0 4px 18px rgba(133, 101, 67, 0.04);
+            box-shadow: 0 4px 18px rgba(122, 92, 71, 0.04);
         }
         .section-title {
             font-family: 'Outfit', sans-serif;
@@ -1520,7 +1518,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
         th {
             text-align: left;
             padding: 12px 16px;
-            border-bottom: 1px solid var(--biscuit-border);
+            border-bottom: 1px solid var(--border-cream);
             color: var(--text-muted);
             font-size: 11.5px;
             font-weight: 700;
@@ -1529,16 +1527,16 @@ ADMIN_PAGE = """<!DOCTYPE html>
         }
         td {
             padding: 14px 16px;
-            border-bottom: 1px solid var(--biscuit-border);
+            border-bottom: 1px solid var(--border-cream);
             color: var(--text-body);
         }
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: var(--lavender-light); }
+        tr:hover td { background: var(--brown-light); }
         .back-link {
             display: inline-flex;
             align-items: center;
             gap: 8px;
-            color: var(--lavender-deep);
+            color: var(--brown-primary);
             text-decoration: none;
             font-weight: 600;
             font-size: 14px;
@@ -1554,7 +1552,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
             <h1 class="title">Platform Governance & Multi-Tenant Registry</h1>
             <div class="subtitle">Platform Owner: Reshma Kodavali ({{ owner.email }})</div>
         </div>
-        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);background:var(--surface-biscuit-tint);padding:8px 16px;border-radius:8px;border:1px solid var(--biscuit-border);">
+        <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-muted);background:var(--surface-cream-tint);padding:8px 16px;border-radius:8px;border:1px solid var(--border-cream);">
             Active AI Engine: {{ llm_model }}
         </div>
     </div>
@@ -1562,7 +1560,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
     <div class="stats-grid">
         <div class="stat-card">
             <div class="stat-label">Total Connected Users</div>
-            <div class="stat-value" style="color:var(--lavender-deep);">{{ total_users }}</div>
+            <div class="stat-value" style="color:var(--brown-primary);">{{ total_users }}</div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Total Emails Processed</div>
@@ -1570,11 +1568,11 @@ ADMIN_PAGE = """<!DOCTYPE html>
         </div>
         <div class="stat-card">
             <div class="stat-label">Total Drafts Generated</div>
-            <div class="stat-value" style="color:#047857;">{{ total_replies }}</div>
+            <div class="stat-value" style="color:#4D7C0F;">{{ total_replies }}</div>
         </div>
         <div class="stat-card">
             <div class="stat-label">Spam Blocked</div>
-            <div class="stat-value" style="color:var(--biscuit-deep);">{{ total_spam }}</div>
+            <div class="stat-value" style="color:var(--brown-shy);">{{ total_spam }}</div>
         </div>
     </div>
 
@@ -1597,7 +1595,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
                     <td style="font-weight:600;color:var(--text-heading);">{{ u.name }}</td>
                     <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">{{ u.email }}</td>
                     <td>
-                        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--lavender-light);color:var(--lavender-deep);">
+                        <span style="font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;background:var(--brown-light);color:var(--brown-primary);">
                             {{ u.role|upper }}
                         </span>
                     </td>
@@ -1627,7 +1625,7 @@ ADMIN_PAGE = """<!DOCTYPE html>
             <tbody>
                 {% for a in activity %}
                 <tr>
-                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--lavender-deep);">{{ a.user_email }}</td>
+                    <td style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--brown-primary);">{{ a.user_email }}</td>
                     <td style="font-weight:600;max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ a.subject }}</td>
                     <td style="font-family:'JetBrains Mono',monospace;font-size:12px;">{{ a.sender }}</td>
                     <td>{{ a.classification }}</td>
@@ -1659,10 +1657,10 @@ def index():
 def login():
     if not os.path.exists(CLIENT_SECRETS_FILE):
         return """
-        <div style="font-family:sans-serif;max-width:600px;margin:80px auto;padding:30px;background:#FDFBF7;border:1px solid #E6DFD3;border-radius:12px;text-align:center;">
-            <h2 style="color:#DC2626;margin-bottom:12px;">credentials.json Missing</h2>
-            <p style="color:#786E64;line-height:1.6;">Please place your Google OAuth <code>credentials.json</code> file in the <code>files/</code> directory to authorize Gmail access.</p>
-            <p><a href="/" style="color:#8B5CF6;text-decoration:none;font-weight:600;">← Return to Home</a></p>
+        <div style="font-family:sans-serif;max-width:600px;margin:80px auto;padding:30px;background:#FAF8F3;border:1px solid #E6DDCE;border-radius:12px;text-align:center;">
+            <h2 style="color:#C84B31;margin-bottom:12px;">credentials.json Missing</h2>
+            <p style="color:#827165;line-height:1.6;">Please place your Google OAuth <code>credentials.json</code> file in the <code>files/</code> directory to authorize Gmail access.</p>
+            <p><a href="/" style="color:#7A5C47;text-decoration:none;font-weight:600;">← Return to Home</a></p>
         </div>
         """, 400
 
@@ -1792,10 +1790,10 @@ def admin_portal():
         return redirect(url_for('index'))
     if user.get('role') != 'owner' and user.get('email', '').lower() != OWNER_EMAIL:
         return """
-        <div style="font-family:sans-serif;text-align:center;margin-top:120px;color:#DC2626;">
+        <div style="font-family:sans-serif;text-align:center;margin-top:120px;color:#C84B31;">
             <h1 style="font-size:32px;">403 Forbidden: Owner Access Required</h1>
-            <p style="color:#786E64;margin-top:8px;">Only the platform owner can access the Administrator Command Center.</p>
-            <p><a href="/dashboard" style="color:#8B5CF6;text-decoration:none;font-weight:600;">← Return to Dashboard</a></p>
+            <p style="color:#827165;margin-top:8px;">Only the platform owner can access the Administrator Command Center.</p>
+            <p><a href="/dashboard" style="color:#7A5C47;text-decoration:none;font-weight:600;">← Return to Dashboard</a></p>
         </div>
         """, 403
 
