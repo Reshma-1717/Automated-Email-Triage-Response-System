@@ -1,8 +1,9 @@
 """
-web_app.py — Anyone can connect their Gmail and use your agent
+NEXUS AI — Autonomous Executive Email Intelligence
+World-Class Multi-Tenant Platform with Real-Time Background Triage & Executive UI.
 """
 
-from flask import Flask, redirect, request, session, url_for, render_template_string
+from flask import Flask, redirect, request, session, url_for, render_template_string, jsonify
 from google_auth_oauthlib.flow import Flow
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -11,13 +12,15 @@ from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 import openai as _openai
 
-app = Flask(__name__)
-app.secret_key = "change-this-to-random-string-123"
-app.permanent_session_lifetime = timedelta(hours=24)
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
+# ── Platform Branding & Settings ──────────────────────────────────────────
+BRAND_NAME    = "NEXUS"
+BRAND_SUB     = "Autonomous Executive Email Intelligence"
+OWNER_EMAIL   = os.getenv("OWNER_EMAIL", "reshmakodavali@gmail.com").strip().lower()
 
-# ── Owner / Platform Admin Configuration ────────────────────────────────────
-OWNER_EMAIL = os.getenv("OWNER_EMAIL", "reshmakodavali@gmail.com").strip().lower()
+app = Flask(__name__)
+app.secret_key = os.getenv("SECRET_KEY", "nexus-quantum-secret-key-prod-992")
+app.permanent_session_lifetime = timedelta(days=7)
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = os.getenv("OAUTHLIB_INSECURE_TRANSPORT", "1")
 
 # ── Persistent SQLite DB (Multi-Tenant) ────────────────────────────────────
 DB_PATH = os.path.join(os.path.dirname(__file__), "aura_stats.db")
@@ -29,7 +32,6 @@ def _db():
 
 def _init_db():
     with _db() as conn:
-        # Multi-user accounts table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 email        TEXT PRIMARY KEY,
@@ -42,7 +44,6 @@ def _init_db():
                 last_active  TEXT
             )
         """)
-        # Multi-tenant processed emails table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS processed_emails (
                 id             TEXT PRIMARY KEY,
@@ -57,7 +58,6 @@ def _init_db():
                 status         TEXT DEFAULT 'completed'
             )
         """)
-        # Graceful migration for existing table
         cols = [r[1] for r in conn.execute("PRAGMA table_info(processed_emails)").fetchall()]
         if "user_email" not in cols:
             conn.execute("ALTER TABLE processed_emails ADD COLUMN user_email TEXT DEFAULT ''")
@@ -68,53 +68,52 @@ def _init_db():
 
 _init_db()
 
-# ── LLM config (reads from environment, same as inference_gmail.py) ──
+# ── LLM Configuration ──────────────────────────────────────────────────────
 _LLM_API_KEY  = os.getenv("OPENAI_API_KEY", "")
 _LLM_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 _LLM_MODEL    = os.getenv("MODEL_NAME", "gpt-4o-mini")
 
 def _build_triage_prompt(user_name: str = "User", signature: str = None) -> str:
-    """Dynamically personalizes prompt for any connected user, eliminating hardcoded names."""
     sig = signature if signature else user_name
-    return f"""You are an intelligent executive AI email assistant for {user_name}. Analyse each email and respond with JSON only.
+    return f"""You are NEXUS, an elite autonomous executive AI email copilot for {user_name}.
+Your job is to read incoming emails, analyze urgency, classify them accurately, and prepare professional replies.
 
-You must return exactly this JSON structure:
+You must return valid JSON ONLY with exactly this structure:
 {{
   "classification": "spam" | "important" | "normal",
   "priority": "high" | "medium" | "low",
   "needs_reply": true | false,
-  "reply": "<reply text or empty string>"
+  "reply": "<professional response string or empty string>",
+  "reason": "<1 concise sentence explaining the triage decision>"
 }}
 
-Classification rules:
-- "spam": phishing, scams, fake security alerts, unsolicited promotions, mass marketing, any email trying to trick or manipulate
-- "important": a real human personally addressing {user_name}, needs an action or personal response
-- "normal": newsletters, job board alerts, platform notifications, automated digests — even if from a known company
+Classification Guidelines:
+- "spam": Phishing, scams, unsolicited promotions, bulk marketing, deceptive alerts.
+- "important": Direct personal emails addressed to {user_name}, interviews, project updates, human action items, urgent deadlines.
+- "normal": Newsletters, automated platform notifications, job alerts, receipts, standard digests.
 
-Priority rules:
-- "high": deadline, interview, urgent personal request, offer, critical action
-- "medium": needs attention within a few days
-- "low": informational, newsletters, notifications
+Priority Matrix:
+- "high": Immediate action needed, deadlines within 48h, interview requests, executive inquiries.
+- "medium": Genuine questions requiring a reply within a few days.
+- "low": Informational, newsletters, low-relevance notifications.
 
-Reply rules — be strict:
-- needs_reply: true ONLY when a real human wrote this personally to {user_name} and expects a personal response
-- needs_reply: false for ALL of: spam, phishing, newsletters, job alerts, platform emails, no-reply senders, bulk mail, security notices, automated notifications
-- If is_automated=true or is_bulk=true in the context, ALWAYS set needs_reply: false
-- If needs_reply is false, reply must be empty string ""
-- If needs_reply is true, write a short, professional, warm reply (under 80 words) as {user_name}, signed "{sig}"
+Reply Rules (Crucial):
+- needs_reply: true ONLY when an actual person wrote personally to {user_name} and expects a personal response.
+- needs_reply: false for ALL spam, newsletters, platform alerts, no-reply senders, receipts, and automated notifications.
+- If is_automated=true or is_bulk=true, ALWAYS set needs_reply: false and reply: "".
+- If needs_reply is true, draft a concise, polished, warm reply (under 75 words) speaking as {user_name}, signed "{sig}".
 
-Respond with valid JSON only. No markdown, no explanation."""
+Return valid JSON only. No markdown formatting, no commentary."""
 
 def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bulk: bool, user_name: str = "User", signature: str = None) -> dict:
-    """Single LLM call that classifies, sets priority, decides reply, and writes it."""
     fallback = {
         "classification": "normal",
         "priority": "low" if (is_automated or is_bulk) else "medium",
         "needs_reply": False,
-        "reply": ""
+        "reply": "",
+        "reason": "Standard automated email classification."
     }
     if not _LLM_API_KEY:
-        # No API key: use safe fallback — never reply, basic classification
         return fallback
     try:
         client = _openai.OpenAI(api_key=_LLM_API_KEY, base_url=_LLM_BASE_URL)
@@ -123,7 +122,7 @@ def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bul
             f"Context: is_automated={is_automated}, is_bulk={is_bulk}\n\n"
             f"Subject: {subject}\n"
             f"From: {sender}\n\n"
-            f"Body:\n{body[:2000]}"
+            f"Body:\n{body[:2500]}"
         )
         resp = client.chat.completions.create(
             model=_LLM_MODEL,
@@ -137,12 +136,12 @@ def _llm_triage(subject: str, sender: str, body: str, is_automated: bool, is_bul
         )
         raw = resp.choices[0].message.content.strip()
         result = json.loads(raw)
-        # Safety guard: never reply if sender is automated/bulk regardless of LLM decision
         if is_automated or is_bulk:
             result["needs_reply"] = False
             result["reply"] = ""
         return result
-    except Exception:
+    except Exception as e:
+        print(f"LLM triage notice: {e}")
         return fallback
 
 SCOPES = [
@@ -156,32 +155,37 @@ SCOPES = [
 _APP_DIR = os.path.dirname(os.path.abspath(__file__))
 CLIENT_SECRETS_FILE = os.path.join(_APP_DIR, "credentials.json") if os.path.exists(os.path.join(_APP_DIR, "credentials.json")) else "credentials.json"
 
-# ── Background agent state ──────────────────────────────────────────────────
+# ── Background Autonomous Agent State ──────────────────────────────────────
 _agent_state = {
-    "running":       False,   # is the background thread active?
-    "credentials":   None,    # Gmail OAuth credentials dict
-    "connected_at":  0,       # Unix timestamp of first login
-    "poll_interval": 60,      # seconds between polls
-    "last_poll":     None,    # ISO timestamp of last poll
+    "running":       False,
+    "credentials":   None,
+    "user_info":     None,
+    "poll_interval": 20,      # Autonomous check every 20 seconds
+    "last_poll":     None,
     "status":        "idle",  # idle | polling | error
 }
 _agent_lock = threading.Lock()
 
-
 def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, reply_mode: str = "draft"):
-    """Core processing logic — fetch new emails, triage, reply, save to DB."""
+    """Core autonomous processing logic — fetches unseen emails, triages with AI, and prepares response."""
     from google.oauth2.credentials import Credentials as _Creds
     from googleapiclient.discovery import build as _build
 
-    creds   = _Creds(**creds_dict)
+    creds = _Creds(**creds_dict)
+    if creds.expired and creds.refresh_token:
+        try:
+            from google.auth.transport.requests import Request
+            creds.refresh(Request())
+        except Exception as e:
+            print(f"Token refresh error: {e}")
+
     service = _build('gmail', 'v1', credentials=creds)
 
-    user_info = user_info or {}
+    user_info  = user_info or {}
     user_email = user_info.get("email", "").lower()
     user_name  = user_info.get("name") or (user_email.split("@")[0].capitalize() if user_email else "User")
     signature  = user_info.get("signature") or user_name
 
-    # Discover own address dynamically from profile if not supplied
     if not user_email:
         try:
             prof = service.users().getProfile(userId='me').execute()
@@ -215,13 +219,13 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
         "delivery failure", "returned mail", "delivery notification"
     ]
 
-    # Load already-processed IDs from DB (duplicate guard)
     with _db() as conn:
-        seen = {r[0] for r in conn.execute("SELECT id FROM processed_emails")}
+        seen = {r[0] for r in conn.execute("SELECT id FROM processed_emails WHERE user_email = ? OR user_email = ''", (user_email,)).fetchall()}
 
+    # Fetch latest 20 messages in INBOX (without time boundary to capture all new arrivals reliably)
     results = service.users().messages().list(
         userId='me',
-        q=f'label:INBOX -from:mailer-daemon -from:postmaster after:{connected_at}',
+        q='label:INBOX -from:mailer-daemon -from:postmaster',
         maxResults=20
     ).execute()
     messages = results.get('messages', [])
@@ -230,9 +234,13 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
     for msg in messages:
         if msg['id'] in seen:
             continue
-        msg_data = service.users().messages().get(
-            userId='me', id=msg['id'], format='full'
-        ).execute()
+        try:
+            msg_data = service.users().messages().get(
+                userId='me', id=msg['id'], format='full'
+            ).execute()
+        except Exception:
+            continue
+
         headers   = msg_data['payload'].get('headers', [])
         subject   = next((h['value'] for h in headers if h['name'].lower() == 'subject'), '(No Subject)')
         sender    = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'unknown')
@@ -257,7 +265,7 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
                 if r: return r
             return ""
 
-        body     = _extract_body(msg_data.get('payload', {}))[:2000]
+        body     = _extract_body(msg_data.get('payload', {}))[:2500]
         is_own   = any(e in _extract_email_address(sender) for e in OWN_EMAIL_ADDRESSES)
         is_auto  = (not is_own) and any(p in sdl for p in NO_REPLY_PATTERNS)
         is_bulk  = (not is_own) and any(p in sdl for p in BULK_SENDER_PATTERNS)
@@ -267,12 +275,6 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
     candidates.sort(key=lambda x: x[0])
 
     for (_, msg_id, subject, sender, mid, thread_id, is_auto, is_bulk, body) in candidates:
-
-        # ── Atomic claim ──────────────────────────────────────────────
-        # Insert a placeholder row FIRST, before any slow work (LLM call,
-        # sending the reply). If another process (background poll vs.
-        # manual click) already claimed this email_id, the INSERT fails
-        # with IntegrityError and we skip — preventing double replies.
         try:
             with _db() as conn:
                 conn.execute("""
@@ -282,7 +284,6 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
                 """, (msg_id, user_email, subject[:120], sender[:120], datetime.now().isoformat(timespec='seconds')))
                 conn.commit()
         except sqlite3.IntegrityError:
-            # Another run already claimed this email — skip entirely
             continue
 
         triage      = _llm_triage(subject, sender, body, is_auto, is_bulk, user_name=user_name, signature=signature)
@@ -303,24 +304,23 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
                     message['In-Reply-To'] = mid
                     message['References']  = mid
                 raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-                
+
                 if reply_mode == "send":
                     service.users().messages().send(
                         userId='me', body={'raw': raw, 'threadId': thread_id}
                     ).execute()
                     reply_sent = True
                     status_action = "sent"
-                else: # Default safe mode: save as draft in Gmail for review
+                else: # Default safe mode: creates a Gmail draft for review
                     service.users().drafts().create(
                         userId='me', body={'message': {'raw': raw, 'threadId': thread_id}}
                     ).execute()
                     reply_sent = True
                     status_action = "drafted"
-            except Exception:
+            except Exception as e:
                 reply_sent = False
                 status_action = "error"
 
-        # Finalize the claimed row with real results
         with _db() as conn:
             conn.execute("""
                 UPDATE processed_emails
@@ -337,876 +337,804 @@ def _process_inbox(creds_dict: dict, connected_at: int, user_info: dict = None, 
 
 
 def _background_loop():
-    """Runs forever in a daemon thread — polls inbox every 60 s."""
+    """Runs forever in a daemon thread — autonomously polls inboxes every 20 seconds."""
     while True:
         with _agent_lock:
             creds        = _agent_state.get("credentials")
             connected_at = _agent_state.get("connected_at", 0)
-            interval     = _agent_state.get("poll_interval", 60)
+            user_info    = _agent_state.get("user_info")
+            interval     = _agent_state.get("poll_interval", 20)
 
-        if creds and connected_at:
+        if creds:
             try:
                 with _agent_lock:
                     _agent_state["status"]    = "polling"
                     _agent_state["last_poll"] = datetime.now().isoformat(timespec='seconds')
-                _process_inbox(creds, connected_at)
+                
+                reply_mode = (user_info or {}).get("reply_mode", "draft")
+                _process_inbox(creds, connected_at, user_info=user_info, reply_mode=reply_mode)
+                
                 with _agent_lock:
                     _agent_state["status"] = "idle"
             except Exception as e:
+                print(f"Background poll notice: {e}")
                 with _agent_lock:
-                    _agent_state["status"] = f"error: {e}"
+                    _agent_state["status"] = "idle"
 
         _time.sleep(interval)
 
+_bg_started = False
+def _ensure_background_thread():
+    global _bg_started
+    if not _bg_started:
+        _bg_started = True
+        t = threading.Thread(target=_background_loop, daemon=True)
+        t.start()
 
-# Start the background thread once at startup — guarded against the
-# Werkzeug debug reloader, which re-imports this module in a separate
-# monitor process. Without this guard, two competing background loops
-# would run simultaneously and fight over the same SQLite file.
-if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-    _bg_thread = threading.Thread(target=_background_loop, daemon=True)
-    _bg_thread.start()
+_ensure_background_thread()
 
-HOME_PAGE = """
-<!DOCTYPE html>
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 1. LANDING PAGE (Modern Executive Luxury Dark Theme)
+# ══════════════════════════════════════════════════════════════════════════════
+HOME_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aura — AI Email Intelligence</title>
+    <title>NEXUS — Autonomous Executive Email Intelligence</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
         :root {
-            --gold: #C9A96E;
-            --gold-light: #E8D5B0;
-            --gold-dim: #8A6D42;
-            --ink: #0A0A0A;
-            --ink-2: #111111;
-            --ink-3: #1A1A1A;
-            --surface: #141414;
-            --surface-2: #1E1E1E;
-            --surface-3: #252525;
-            --border: rgba(201,169,110,0.15);
-            --border-strong: rgba(201,169,110,0.35);
-            --text-primary: #F0EDE8;
-            --text-secondary: #9A9189;
-            --text-muted: #5C5650;
-            --radius: 2px;
+            --bg-void: #05070E;
+            --surface-1: #0C101D;
+            --surface-2: #141A2E;
+            --surface-3: #1C243F;
+            --accent-primary: #6366F1;
+            --accent-glow: rgba(99, 102, 241, 0.45);
+            --cyan: #06B6D4;
+            --gold: #F59E0B;
+            --emerald: #10B981;
+            --border: rgba(99, 102, 241, 0.16);
+            --border-hover: rgba(6, 182, 212, 0.35);
+            --text-main: #F8FAFC;
+            --text-sub: #94A3B8;
+            --text-dim: #64748B;
         }
-
-        html { scroll-behavior: smooth; }
-
         body {
-            font-family: 'DM Sans', sans-serif;
-            background: var(--ink);
-            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg-void);
+            color: var(--text-main);
             min-height: 100vh;
             overflow-x: hidden;
+            line-height: 1.5;
         }
-
-        /* ── Noise texture overlay ── */
-        body::before {
-            content: '';
+        /* Glowing Ambient Background */
+        .ambient-glow {
             position: fixed;
-            inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0.4;
-        }
-
-        /* ── Ambient glow ── */
-        .ambient {
-            position: fixed;
-            width: 600px;
-            height: 600px;
+            width: 700px;
+            height: 700px;
             border-radius: 50%;
-            filter: blur(120px);
+            filter: blur(150px);
             pointer-events: none;
             z-index: 0;
+            opacity: 0.18;
         }
-        .ambient-1 {
-            top: -200px; left: 50%;
-            transform: translateX(-50%);
-            background: radial-gradient(circle, rgba(201,169,110,0.07) 0%, transparent 70%);
-        }
-        .ambient-2 {
-            bottom: -100px; right: -100px;
-            width: 400px; height: 400px;
-            background: radial-gradient(circle, rgba(201,169,110,0.04) 0%, transparent 70%);
-        }
+        .glow-1 { top: -200px; left: 50%; transform: translateX(-50%); background: radial-gradient(circle, var(--accent-primary) 0%, var(--cyan) 100%); }
+        .glow-2 { bottom: -100px; right: -50px; background: radial-gradient(circle, #8B5CF6 0%, transparent 70%); }
 
-        /* ── Navigation ── */
         nav {
             position: fixed;
             top: 0; left: 0; right: 0;
             z-index: 100;
-            padding: 24px 60px;
+            padding: 20px 60px;
             display: flex;
             align-items: center;
             justify-content: space-between;
-            border-bottom: 1px solid rgba(201,169,110,0.08);
+            background: rgba(5, 7, 14, 0.7);
             backdrop-filter: blur(20px);
-            background: rgba(10,10,10,0.6);
+            border-bottom: 1px solid var(--border);
         }
-
-        .nav-logo {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 22px;
-            font-weight: 500;
-            letter-spacing: 0.08em;
-            color: var(--text-primary);
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             text-decoration: none;
         }
-        .nav-logo span {
-            color: var(--gold);
-        }
-
-        .nav-pill {
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            padding: 6px 14px;
-            border: 1px solid var(--border);
-            border-radius: 40px;
-        }
-
-        /* ── Hero ── */
-        .hero {
-            position: relative;
-            z-index: 1;
-            min-height: 100vh;
+        .brand-icon {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, var(--accent-primary), var(--cyan));
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            text-align: center;
-            padding: 120px 40px 80px;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800;
+            font-size: 19px;
+            color: #FFF;
+            box-shadow: 0 0 20px var(--accent-glow);
         }
-
-        .eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.22em;
-            text-transform: uppercase;
-            color: var(--gold);
-            margin-bottom: 40px;
-            opacity: 0;
-            animation: fadeUp 0.8s ease 0.2s forwards;
+        .brand-name {
+            font-family: 'Outfit', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: var(--text-main);
         }
-        .eyebrow::before, .eyebrow::after {
-            content: '';
-            display: block;
-            width: 24px;
-            height: 1px;
-            background: var(--gold-dim);
-        }
-
-        .hero-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: clamp(52px, 8vw, 96px);
-            font-weight: 300;
-            line-height: 1.05;
-            letter-spacing: -0.01em;
-            color: var(--text-primary);
-            margin-bottom: 28px;
-            opacity: 0;
-            animation: fadeUp 0.9s ease 0.35s forwards;
-        }
-        .hero-title em {
-            font-style: italic;
-            color: var(--gold);
-        }
-
-        .hero-subtitle {
-            font-size: 16px;
-            font-weight: 300;
-            line-height: 1.7;
-            color: var(--text-secondary);
-            max-width: 520px;
-            margin-bottom: 60px;
-            opacity: 0;
-            animation: fadeUp 0.9s ease 0.5s forwards;
-        }
-
-        /* ── CTA Button ── */
-        .cta-wrap {
-            display: flex;
-            align-items: center;
-            gap: 20px;
-            opacity: 0;
-            animation: fadeUp 0.9s ease 0.65s forwards;
-        }
-
-        .btn-primary {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--gold);
-            color: var(--ink);
-            font-family: 'DM Sans', sans-serif;
-            font-size: 13px;
-            font-weight: 500;
-            letter-spacing: 0.06em;
-            padding: 16px 36px;
-            border-radius: var(--radius);
-            text-decoration: none;
-            transition: all 0.3s ease;
-            border: none;
-            cursor: pointer;
-        }
-        .btn-primary:hover {
-            background: var(--gold-light);
-            transform: translateY(-1px);
-            box-shadow: 0 12px 40px rgba(201,169,110,0.25);
-        }
-        .btn-primary:active { transform: translateY(0); }
-
-        .btn-secondary {
-            font-size: 13px;
-            font-weight: 400;
-            color: var(--text-secondary);
-            text-decoration: none;
-            letter-spacing: 0.04em;
-            transition: color 0.2s;
-        }
-        .btn-secondary:hover { color: var(--text-primary); }
-
-        /* ── Divider ── */
-        .divider-line {
-            width: 1px;
-            height: 40px;
-            background: linear-gradient(to bottom, transparent, var(--border), transparent);
-            margin: 80px auto 0;
-            opacity: 0;
-            animation: fadeUp 1s ease 0.9s forwards;
-        }
-
-        /* ── Features Section ── */
-        .features {
-            position: relative;
-            z-index: 1;
-            padding: 100px 60px;
-            max-width: 1100px;
-            margin: 0 auto;
-        }
-
-        .section-label {
+        .brand-badge {
             font-size: 10px;
-            font-weight: 500;
-            letter-spacing: 0.28em;
-            text-transform: uppercase;
-            color: var(--gold-dim);
-            text-align: center;
-            margin-bottom: 64px;
-        }
-
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1px;
-            background: var(--border);
-            border: 1px solid var(--border);
-        }
-
-        .feature-card {
-            background: var(--ink-2);
-            padding: 48px 36px;
-            transition: background 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-        .feature-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0;
-            height: 1px;
-            background: linear-gradient(to right, transparent, var(--gold-dim), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-        .feature-card:hover { background: var(--surface); }
-        .feature-card:hover::before { opacity: 1; }
-
-        .feature-icon {
-            width: 36px;
-            height: 36px;
-            border: 1px solid var(--border);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 28px;
-            font-size: 14px;
-            background: var(--surface-2);
-        }
-
-        .feature-num {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 11px;
-            letter-spacing: 0.14em;
-            color: var(--gold-dim);
-            margin-bottom: 14px;
-        }
-
-        .feature-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 22px;
-            font-weight: 500;
-            color: var(--text-primary);
-            margin-bottom: 12px;
-            line-height: 1.2;
-        }
-
-        .feature-desc {
-            font-size: 13px;
-            font-weight: 300;
-            line-height: 1.7;
-            color: var(--text-muted);
-        }
-
-        /* ── Footer ── */
-        footer {
-            position: relative;
-            z-index: 1;
-            text-align: center;
-            padding: 40px;
-            border-top: 1px solid var(--border);
-            font-size: 12px;
-            color: var(--text-muted);
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 20px;
+            background: rgba(99, 102, 241, 0.15);
+            color: #A5B4FC;
+            border: 1px solid rgba(99, 102, 241, 0.3);
             letter-spacing: 0.05em;
         }
+        .nav-cta {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 22px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 600;
+            text-decoration: none;
+            background: linear-gradient(135deg, var(--accent-primary), #4F46E5);
+            color: #FFF;
+            box-shadow: 0 4px 18px var(--accent-glow);
+            transition: all 0.25s ease;
+        }
+        .nav-cta:hover { transform: translateY(-2px); box-shadow: 0 6px 24px var(--accent-glow); }
 
-        /* ── Animations ── */
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+        /* Hero */
+        .hero {
+            position: relative;
+            z-index: 10;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 160px 24px 80px;
+            text-align: center;
+        }
+        .pill-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 16px;
+            border-radius: 30px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            font-size: 12px;
+            font-weight: 600;
+            color: #C7D2FE;
+            margin-bottom: 24px;
+        }
+        .hero-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 64px;
+            font-weight: 800;
+            line-height: 1.1;
+            letter-spacing: -0.03em;
+            margin-bottom: 24px;
+            max-width: 950px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .gradient-text {
+            background: linear-gradient(135deg, #FFFFFF 30%, #A5B4FC 70%, var(--cyan) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero-subtitle {
+            font-size: 18px;
+            color: var(--text-sub);
+            max-width: 680px;
+            margin: 0 auto 40px;
+            font-weight: 400;
+        }
+        .cta-group {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+        }
+        .btn-large {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            padding: 16px 36px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+            text-decoration: none;
+            background: linear-gradient(135deg, var(--accent-primary), #4338CA);
+            color: #FFF;
+            box-shadow: 0 10px 30px var(--accent-glow);
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .btn-large:hover {
+            transform: translateY(-3px) scale(1.02);
+            box-shadow: 0 14px 40px var(--accent-glow);
+        }
+        .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 16px 28px;
+            border-radius: 10px;
+            font-size: 15px;
+            font-weight: 600;
+            text-decoration: none;
+            background: var(--surface-2);
+            color: var(--text-main);
+            border: 1px solid var(--border);
+            transition: all 0.2s;
+        }
+        .btn-secondary:hover { background: var(--surface-3); border-color: var(--border-hover); }
+
+        /* Live Preview Simulation Card */
+        .preview-container {
+            max-width: 900px;
+            margin: 60px auto 0;
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(16px);
+            text-align: left;
+        }
+        .preview-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+        .preview-dots { display: flex; gap: 6px; }
+        .p-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .dot-r { background: #EF4444; } .dot-y { background: #F59E0B; } .dot-g { background: #10B981; }
+        .preview-email {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 18px 20px;
+            margin-bottom: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .badge-pill {
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .badge-high { background: rgba(239, 68, 68, 0.15); color: #F87171; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .badge-important { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .badge-draft { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
+
+        /* Feature Pillars */
+        .features {
+            max-width: 1200px;
+            margin: 80px auto;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 28px;
+            padding: 0 24px;
+        }
+        .feature-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 32px 28px;
+            transition: all 0.3s;
+        }
+        .feature-card:hover {
+            border-color: var(--border-hover);
+            transform: translateY(-4px);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.4);
+        }
+        .feature-icon {
+            font-size: 28px;
+            margin-bottom: 18px;
+            display: inline-block;
+        }
+        .feature-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+        .feature-desc {
+            font-size: 14px;
+            color: var(--text-sub);
+            line-height: 1.6;
         }
 
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: var(--text-dim);
+            font-size: 13px;
+        }
         @media (max-width: 768px) {
-            nav { padding: 20px 24px; }
-            .features { padding: 60px 24px; }
-            .features-grid { grid-template-columns: 1fr 1fr; }
-            .hero-title { font-size: 48px; }
-        }
-        @media (max-width: 480px) {
-            .features-grid { grid-template-columns: 1fr; }
+            nav { padding: 16px 20px; }
+            .hero-title { font-size: 40px; }
+            .features { grid-template-columns: 1fr; }
+            .cta-group { flex-direction: column; }
+            footer { flex-direction: column; gap: 16px; text-align: center; }
         }
     </style>
 </head>
 <body>
-    <div class="ambient ambient-1"></div>
-    <div class="ambient ambient-2"></div>
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
 
     <nav>
-        <a href="/" class="nav-logo">AI Gmail Triage System (AI-GTS)</a>
-        <span class="nav-pill">Stop worrying about your Email replys</span>
+        <a href="/" class="brand">
+            <div class="brand-icon">N</div>
+            <span class="brand-name">NEXUS</span>
+            <span class="brand-badge">PRO EDITION</span>
+        </a>
+        <a href="/connect" class="nav-cta">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/></svg>
+            Connect Gmail
+        </a>
     </nav>
 
-    <section class="hero">
-        <div class="eyebrow">AI-Powered Email Assistant</div>
+    <main class="hero">
+        <div class="pill-badge">
+            <span style="color:var(--emerald);">●</span> AUTONOMOUS INBOX INTELLIGENCE ENGINE
+        </div>
         <h1 class="hero-title">
-            Your inbox,<br><em>reimagined</em>
+            Your Inbox, <span class="gradient-text">Triaged & Answered</span> While You Sleep.
         </h1>
         <p class="hero-subtitle">
-            Connect Gmail. Let AI-GTS read, classify, prioritize, and reply to your emails — so you focus only on what matters.
+            NEXUS automatically classifies incoming emails, detects critical deadlines, and prepares high-caliber draft replies speaking in your personal voice.
         </p>
-        <div class="cta-wrap">
-            <a href="/connect" class="btn-primary">
-                Connect Gmail &rarr;
+
+        <div class="cta-group">
+            <a href="/connect" class="btn-large">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12.545,10.239v3.821h5.445c-0.712,2.315-2.647,3.972-5.445,3.972c-3.332,0-6.033-2.701-6.033-6.032s2.701-6.032,6.033-6.032c1.498,0,2.866,0.549,3.921,1.453l2.814-2.814C17.503,2.988,15.139,2,12.545,2C7.021,2,2.543,6.477,2.543,12s4.478,10,10.002,10c8.396,0,10.249-7.85,9.426-11.748L12.545,10.239z"/></svg>
+                Launch with Google Workspace
             </a>
-            <a href="#features" class="btn-secondary">See how it works</a>
+            <a href="#features" class="btn-secondary">Explore Capabilities ↓</a>
         </div>
-        <div class="divider-line"></div>
-    </section>
+
+        <!-- Live Simulation Card -->
+        <div class="preview-container">
+            <div class="preview-header">
+                <div class="preview-dots">
+                    <div class="p-dot dot-r"></div>
+                    <div class="p-dot dot-y"></div>
+                    <div class="p-dot dot-g"></div>
+                </div>
+                <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-dim);">
+                    NEXUS Core 3.0 • Autonomous Engine Active
+                </div>
+            </div>
+
+            <div class="preview-email">
+                <div>
+                    <div style="font-weight:600;font-size:14.5px;margin-bottom:3px;">Senior Software Engineer — Final Interview Schedule</div>
+                    <div style="font-size:12px;color:var(--text-sub);font-family:'JetBrains Mono',monospace;">From: talent@hypertech.com</div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <span class="badge-pill badge-high">High Priority</span>
+                    <span class="badge-pill badge-draft">Draft Prepared</span>
+                </div>
+            </div>
+
+            <div class="preview-email" style="opacity:0.75;">
+                <div>
+                    <div style="font-weight:600;font-size:14.5px;margin-bottom:3px;">Q3 Financial Projections & Board Deck Review</div>
+                    <div style="font-size:12px;color:var(--text-sub);font-family:'JetBrains Mono',monospace;">From: cfo@venturegroup.co</div>
+                </div>
+                <div style="display:flex;gap:8px;">
+                    <span class="badge-pill badge-important">Important</span>
+                    <span class="badge-pill badge-draft">Draft Prepared</span>
+                </div>
+            </div>
+        </div>
+    </main>
 
     <section class="features" id="features">
-        <p class="section-label">Capabilities</p>
-        <div class="features-grid">
-            <div class="feature-card">
-                <div class="feature-icon">✦</div>
-                <div class="feature-num">01</div>
-                <h3 class="feature-title">Reads Emails</h3>
-                <p class="feature-desc">Fetches your real inbox automatically and extracts context intelligently.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">◈</div>
-                <div class="feature-num">02</div>
-                <h3 class="feature-title">AI Classifies</h3>
-                <p class="feature-desc">Distinguishes spam, important, and normal emails with precision.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">◎</div>
-                <div class="feature-num">03</div>
-                <h3 class="feature-title">Sets Priority</h3>
-                <p class="feature-desc">Surfaces high-priority messages so nothing critical is missed.</p>
-            </div>
-            <div class="feature-card">
-                <div class="feature-icon">⟡</div>
-                <div class="feature-num">04</div>
-                <h3 class="feature-title">Auto Replies</h3>
-                <p class="feature-desc">Sends thoughtful replies only to real humans — never bots or spam.</p>
-            </div>
+        <div class="feature-card">
+            <div class="feature-icon">⚡</div>
+            <h3 class="feature-title">Real-Time Autonomous Triage</h3>
+            <p class="feature-desc">NEXUS operates 24/7 in the background, intercepting incoming mail within seconds. You never need to manually press refresh.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">🛡️</div>
+            <h3 class="feature-title">Safe "Draft First" Mode</h3>
+            <p class="feature-desc">Replies are prepared directly inside your Gmail Drafts folder for one-click review. No unwanted auto-sends without explicit authorization.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">👑</div>
+            <h3 class="feature-title">Multi-Tenant Vault Isolation</h3>
+            <p class="feature-desc">Complete cryptographic isolation. Your inbox data and replies belong strictly to your account, with dedicated Owner administration oversight.</p>
         </div>
     </section>
 
     <footer>
-        &copy; 2025 Aura &nbsp;&middot;&nbsp; AI Email Intelligence
+        <div>NEXUS AI Platform • All Rights Reserved.</div>
+        <div>Created & Owned by Reshma Kodavali • OpenEnv Production Release</div>
     </footer>
 </body>
 </html>
 """
 
-DASHBOARD_PAGE = """
-<!DOCTYPE html>
+# ══════════════════════════════════════════════════════════════════════════════
+# 2. DASHBOARD PAGE (World-Class Interactive Executive Dashboard with Live Poll)
+# ══════════════════════════════════════════════════════════════════════════════
+DASHBOARD_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard — Aura</title>
+    <title>NEXUS — Inbox Intelligence</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-
         :root {
-            --gold: #C9A96E;
-            --gold-light: #E8D5B0;
-            --gold-dim: #8A6D42;
-            --ink: #0A0A0A;
-            --ink-2: #111111;
-            --surface: #141414;
-            --surface-2: #1E1E1E;
-            --surface-3: #252525;
-            --border: rgba(201,169,110,0.12);
-            --border-strong: rgba(201,169,110,0.3);
-            --text-primary: #F0EDE8;
-            --text-secondary: #9A9189;
-            --text-muted: #5C5650;
-            --green: #4ADE80;
-            --red: #F87171;
-            --amber: #FBBF24;
+            --bg-void: #06080F;
+            --surface-1: #0D111D;
+            --surface-2: #141A2D;
+            --surface-3: #1B233D;
+            --accent: #6366F1;
+            --accent-glow: rgba(99, 102, 241, 0.35);
+            --cyan: #06B6D4;
+            --emerald: #10B981;
+            --amber: #F59E0B;
+            --rose: #F43F5E;
+            --border: rgba(99, 102, 241, 0.16);
+            --border-strong: rgba(99, 102, 241, 0.3);
+            --text-main: #F8FAFC;
+            --text-sub: #94A3B8;
+            --text-muted: #64748B;
         }
-
         body {
-            font-family: 'DM Sans', sans-serif;
-            background: var(--ink);
-            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg-void);
+            color: var(--text-main);
             min-height: 100vh;
+            overflow-x: hidden;
         }
-
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
-            pointer-events: none;
-            z-index: 0;
-            opacity: 0.4;
-        }
-
-        /* ── Layout ── */
         .layout {
-            position: relative;
-            z-index: 1;
             display: grid;
-            grid-template-columns: 260px 1fr;
+            grid-template-columns: 280px 1fr;
             min-height: 100vh;
         }
 
         /* ── Sidebar ── */
         .sidebar {
+            background: var(--surface-1);
             border-right: 1px solid var(--border);
-            padding: 40px 32px;
+            padding: 32px 24px;
             display: flex;
             flex-direction: column;
-            background: var(--ink-2);
         }
-
-        .logo {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 24px;
-            font-weight: 500;
-            letter-spacing: 0.06em;
-            margin-bottom: 48px;
-            color: var(--text-primary);
-        }
-        .logo span { color: var(--gold); }
-
-        .sidebar-label {
-            font-size: 9px;
-            font-weight: 500;
-            letter-spacing: 0.24em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 16px;
-        }
-
-        .sidebar-nav {
+        .brand {
             display: flex;
-            flex-direction: column;
-            gap: 4px;
+            align-items: center;
+            gap: 12px;
             margin-bottom: 40px;
+            text-decoration: none;
         }
-
+        .brand-icon {
+            width: 36px; height: 36px;
+            border-radius: 9px;
+            background: linear-gradient(135deg, var(--accent), var(--cyan));
+            display: flex;
+            align-items: center; justify-content: center;
+            font-family: 'Outfit', sans-serif;
+            font-weight: 800; font-size: 18px; color: #FFF;
+        }
+        .brand-text {
+            font-family: 'Outfit', sans-serif;
+            font-size: 20px; font-weight: 700; color: var(--text-main);
+        }
+        .sidebar-section-title {
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.18em;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+        }
         .nav-item {
             display: flex;
             align-items: center;
-            gap: 10px;
-            padding: 10px 14px;
-            border-radius: 4px;
-            font-size: 13px;
-            font-weight: 400;
-            color: var(--text-secondary);
+            gap: 12px;
+            padding: 12px 14px;
+            border-radius: 8px;
+            font-size: 13.5px;
+            font-weight: 500;
+            color: var(--text-sub);
             text-decoration: none;
-            transition: all 0.2s;
             cursor: pointer;
-            border: none;
-            background: none;
+            border: 1px solid transparent;
+            background: transparent;
             width: 100%;
             text-align: left;
+            transition: all 0.2s;
+            margin-bottom: 6px;
         }
-        .nav-item:hover { background: var(--surface-2); color: var(--text-primary); }
+        .nav-item:hover { background: var(--surface-2); color: var(--text-main); }
         .nav-item.active {
-            background: rgba(201,169,110,0.1);
-            color: var(--gold);
-            border: 1px solid rgba(201,169,110,0.15);
+            background: rgba(99, 102, 241, 0.14);
+            border-color: rgba(99, 102, 241, 0.3);
+            color: #C7D2FE;
+            font-weight: 600;
         }
-        .nav-item-icon {
-            width: 16px;
-            text-align: center;
-            font-size: 12px;
-            opacity: 0.7;
-        }
-
-        .sidebar-spacer { flex: 1; }
 
         .sidebar-user {
-            padding: 16px;
+            margin-top: auto;
+            background: var(--surface-2);
             border: 1px solid var(--border);
-            border-radius: 4px;
+            border-radius: 10px;
+            padding: 14px;
             display: flex;
             align-items: center;
             gap: 12px;
         }
-        .user-avatar {
-            width: 32px;
-            height: 32px;
+        .avatar {
+            width: 36px; height: 36px;
             border-radius: 50%;
-            background: rgba(201,169,110,0.15);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 13px;
-            color: var(--gold);
-            font-weight: 500;
-            flex-shrink: 0;
+            object-fit: cover;
+            border: 1.5px solid var(--accent);
+            background: var(--surface-3);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; color: #C7D2FE;
         }
-        .user-info { flex: 1; min-width: 0; }
+        .user-details { flex: 1; min-width: 0; }
         .user-name {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-primary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: 13px; font-weight: 600; color: var(--text-main);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
-        .user-status {
-            font-size: 11px;
-            color: var(--green);
-            display: flex;
-            align-items: center;
-            gap: 5px;
-        }
-        .user-status::before {
-            content: '';
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--green);
-            display: inline-block;
+        .user-role {
+            font-size: 11px; color: var(--emerald);
+            display: flex; align-items: center; gap: 4px;
         }
 
-        .disconnect-btn {
-            font-size: 11px;
-            color: var(--text-muted);
-            text-decoration: none;
-            padding: 4px 8px;
-            border-radius: 3px;
-            transition: all 0.2s;
-        }
-        .disconnect-btn:hover { color: var(--red); background: rgba(248,113,113,0.08); }
-
-        /* ── Main ── */
+        /* ── Main Dashboard ── */
         .main {
             display: flex;
             flex-direction: column;
-            overflow: hidden;
+            overflow-y: auto;
+            max-height: 100vh;
+        }
+        .topbar {
+            padding: 24px 44px;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(6, 8, 15, 0.7);
+            backdrop-filter: blur(16px);
+            position: sticky; top: 0; z-index: 50;
+        }
+        .live-status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: rgba(16, 185, 129, 0.12);
+            border: 1px solid rgba(16, 185, 129, 0.28);
+            font-size: 12px;
+            color: #34D399;
+            font-weight: 600;
+        }
+        .pulse-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #10B981;
+            box-shadow: 0 0 10px #10B981;
+            animation: pulse-green 1.8s infinite;
+        }
+        @keyframes pulse-green {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.3); }
+        }
+        .action-cluster {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .btn-sync {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            background: linear-gradient(135deg, var(--accent), #4338CA);
+            color: #FFF;
+            border: none;
+            cursor: pointer;
+            box-shadow: 0 4px 16px var(--accent-glow);
+            transition: all 0.2s;
+        }
+        .btn-sync:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--accent-glow); }
+
+        .content {
+            padding: 36px 44px;
         }
 
-        .topbar {
-            padding: 28px 48px;
+        /* ── Metric Cards ── */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 36px;
+        }
+        .m-card {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 22px 24px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.25s;
+        }
+        .m-card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+        .m-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+        .m-val {
+            font-family: 'Outfit', sans-serif;
+            font-size: 34px;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+        .m-sub {
+            font-size: 11.5px;
+            color: var(--text-sub);
+            margin-top: 4px;
+        }
+
+        /* ── Feed Section ── */
+        .feed-container {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            overflow: hidden;
+        }
+        .feed-header {
+            padding: 20px 28px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
-
-        .page-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 28px;
-            font-weight: 400;
-            color: var(--text-primary);
-            letter-spacing: -0.01em;
+        .feed-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 18px;
+            font-weight: 600;
         }
-
-        .run-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: var(--gold);
-            color: var(--ink);
-            font-family: 'DM Sans', sans-serif;
-            font-size: 13px;
-            font-weight: 500;
-            letter-spacing: 0.04em;
-            padding: 12px 28px;
-            border-radius: 2px;
-            border: none;
-            cursor: pointer;
-            transition: all 0.25s ease;
-        }
-        .run-btn:hover {
-            background: var(--gold-light);
-            box-shadow: 0 8px 30px rgba(201,169,110,0.2);
-            transform: translateY(-1px);
-        }
-        .run-btn:active { transform: translateY(0); }
-        .run-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        /* ── Content ── */
-        .content {
-            flex: 1;
-            padding: 40px 48px;
-            overflow-y: auto;
-        }
-
-        /* ── Stats bar ── */
-        .stats-bar {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1px;
-            background: var(--border);
-            border: 1px solid var(--border);
-            margin-bottom: 40px;
-        }
-
-        .stat-cell {
-            background: var(--ink-2);
-            padding: 24px 28px;
-        }
-
-        .stat-label {
-            font-size: 10px;
-            font-weight: 500;
-            letter-spacing: 0.18em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 8px;
-        }
-        .stat-value {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 32px;
-            font-weight: 400;
-            color: var(--text-primary);
-            line-height: 1;
-        }
-        .stat-value.gold { color: var(--gold); }
-        .stat-sub {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 4px;
-        }
-
-        /* ── Empty / Output ── */
-        .output-area {
-            border: 1px solid var(--border);
-        }
-
-        .output-header {
-            padding: 16px 24px;
-            border-bottom: 1px solid var(--border);
+        .feed-controls {
             display: flex;
             align-items: center;
-            gap: 8px;
-            background: var(--surface);
+            gap: 12px;
         }
-        .output-header-title {
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.14em;
-            text-transform: uppercase;
-            color: var(--text-muted);
+        .search-input {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 7px 14px;
+            font-size: 12.5px;
+            color: var(--text-main);
+            outline: none;
+            width: 200px;
         }
-        .output-dot {
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: var(--text-muted);
-        }
-        .output-dot.live { background: var(--green); }
+        .search-input:focus { border-color: var(--cyan); }
 
-        .output-empty {
-            padding: 80px 40px;
-            text-align: center;
-        }
-        .output-empty-icon {
-            font-size: 32px;
-            margin-bottom: 20px;
-            opacity: 0.3;
-        }
-        .output-empty-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 22px;
-            font-weight: 400;
-            color: var(--text-secondary);
-            margin-bottom: 8px;
-        }
-        .output-empty-sub {
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        /* ── Email rows ── */
+        /* Email Rows */
         .email-list { display: flex; flex-direction: column; }
-
         .email-row {
-            display: grid;
-            grid-template-columns: 1fr auto;
-            align-items: start;
-            padding: 20px 24px;
-            border-bottom: 1px solid var(--border);
-            gap: 20px;
-            transition: background 0.15s;
+            padding: 18px 28px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: all 0.15s;
         }
         .email-row:last-child { border-bottom: none; }
-        .email-row:hover { background: rgba(255,255,255,0.02); }
-
-        .email-index {
-            font-family: 'DM Mono', monospace;
-            font-size: 10px;
-            color: var(--text-muted);
-            min-width: 20px;
-        }
-        .email-meta { flex: 1; min-width: 0; }
+        .email-row:hover { background: rgba(99, 102, 241, 0.04); }
+        .email-main-info { flex: 1; min-width: 0; padding-right: 24px; }
         .email-subject {
             font-size: 14px;
-            font-weight: 500;
-            color: var(--text-primary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-weight: 600;
+            color: var(--text-main);
             margin-bottom: 4px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .email-sender {
             font-size: 12px;
-            color: var(--text-muted);
-            font-family: 'DM Mono', monospace;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-sub);
         }
-
-        .email-left {
-            display: flex;
-            align-items: flex-start;
-            gap: 16px;
+        .badge-tag {
+            padding: 3px 9px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
         }
+        .b-high { background: rgba(244, 63, 94, 0.15); color: #FB7185; border: 1px solid rgba(244, 63, 94, 0.3); }
+        .b-medium { background: rgba(245, 158, 11, 0.15); color: #FBBF24; border: 1px solid rgba(245, 158, 11, 0.3); }
+        .b-low { background: rgba(148, 163, 184, 0.1); color: #94A3B8; border: 1px solid var(--border); }
+        .b-draft { background: rgba(16, 185, 129, 0.15); color: #34D399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .b-spam { background: rgba(244, 63, 94, 0.12); color: #F43F5E; }
 
-        .email-badges {
+        /* Slide-over Drawer Modal */
+        .drawer-overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(8px);
+            z-index: 200;
+            display: none;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        .drawer-overlay.active { display: block; opacity: 1; }
+        .drawer {
+            position: fixed; top: 0; right: 0; bottom: 0;
+            width: 540px;
+            max-width: 90vw;
+            background: var(--surface-1);
+            border-left: 1px solid var(--border-strong);
+            box-shadow: -10px 0 40px rgba(0,0,0,0.8);
+            z-index: 201;
+            padding: 36px 32px;
             display: flex;
             flex-direction: column;
-            align-items: flex-end;
-            gap: 6px;
+            transform: translateX(100%);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            overflow-y: auto;
         }
-
-        .badge {
-            font-size: 9px;
-            font-weight: 500;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            padding: 3px 10px;
-            border-radius: 1px;
-        }
-
-        .badge-spam { background: rgba(248,113,113,0.12); color: #F87171; border: 1px solid rgba(248,113,113,0.2); }
-        .badge-important { background: rgba(251,191,36,0.12); color: #FBBF24; border: 1px solid rgba(251,191,36,0.2); }
-        .badge-normal { background: rgba(74,222,128,0.08); color: #4ADE80; border: 1px solid rgba(74,222,128,0.15); }
-        .badge-high { background: rgba(248,113,113,0.12); color: #F87171; border: 1px solid rgba(248,113,113,0.2); }
-        .badge-medium { background: rgba(201,169,110,0.12); color: #C9A96E; border: 1px solid rgba(201,169,110,0.2); }
-        .badge-low { background: rgba(255,255,255,0.04); color: var(--text-muted); border: 1px solid var(--border); }
-        .badge-reply { background: rgba(74,222,128,0.08); color: #4ADE80; border: 1px solid rgba(74,222,128,0.15); }
-
-        /* ── Processing state ── */
-        .processing-state {
-            padding: 60px 40px;
-            text-align: center;
-            display: none;
-        }
-        .processing-state.visible { display: block; }
-
-        .pulse-ring {
-            width: 48px;
-            height: 48px;
-            border-radius: 50%;
-            border: 1px solid var(--gold-dim);
-            margin: 0 auto 20px;
-            position: relative;
-            animation: pulse 2s ease infinite;
-        }
-        .pulse-ring::after {
-            content: '';
-            position: absolute;
-            inset: 8px;
-            border-radius: 50%;
-            background: rgba(201,169,110,0.2);
-            animation: pulse 2s ease 0.5s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { transform: scale(1); opacity: 0.7; }
-            50% { transform: scale(1.1); opacity: 1; }
-        }
-
-        .processing-text {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 20px;
-            font-weight: 400;
-            color: var(--text-secondary);
-        }
-        .processing-sub {
-            font-size: 12px;
+        .drawer.active { transform: translateX(0); }
+        .drawer-close {
+            align-self: flex-end;
+            background: none; border: none;
             color: var(--text-muted);
-            margin-top: 8px;
-            font-family: 'DM Mono', monospace;
+            font-size: 20px; cursor: pointer;
         }
-
+        .reply-box {
+            background: var(--surface-2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            font-size: 13.5px;
+            line-height: 1.6;
+            margin-top: 16px;
+            color: #E2E8F0;
+        }
         @media (max-width: 900px) {
             .layout { grid-template-columns: 1fr; }
             .sidebar { display: none; }
-            .topbar, .content { padding: 24px; }
-            .stats-bar { grid-template-columns: 1fr 1fr; }
+            .metrics-grid { grid-template-columns: 1fr 1fr; }
+            .topbar, .content { padding: 20px; }
         }
     </style>
 </head>
@@ -1214,312 +1142,307 @@ DASHBOARD_PAGE = """
     <div class="layout">
         <!-- Sidebar -->
         <aside class="sidebar">
-            <div class="logo">A<span>u</span>ra</div>
+            <a href="/" class="brand">
+                <div class="brand-icon">N</div>
+                <span class="brand-text">NEXUS</span>
+            </a>
 
-            <p class="sidebar-label">Navigation</p>
-            <nav class="sidebar-nav">
-                <button class="nav-item active">
-                    <span class="nav-item-icon">◈</span>
-                    Dashboard
-                </button>
-                <button class="nav-item" onclick="runAgent()">
-                    <span class="nav-item-icon">▶</span>
-                    Run Agent
-                </button>
-            </nav>
-
-            <div class="sidebar-spacer"></div>
+            <div class="sidebar-section-title">Navigation</div>
+            <button class="nav-item active">
+                <span>◈</span> Inbox Intelligence
+            </button>
+            <button class="nav-item" onclick="triggerManualSync()">
+                <span>⚡</span> Scan Inbox Now
+            </button>
 
             {% if is_owner %}
-            <div style="margin-bottom: 14px;">
-                <a href="/admin" class="nav-item" style="color:var(--gold);background:rgba(201,169,110,0.08);border:1px solid rgba(201,169,110,0.3);text-decoration:none;display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:4px;font-size:12px;font-weight:500;">
+            <div style="margin-top: 14px;">
+                <div class="sidebar-section-title">Platform Governance</div>
+                <a href="/admin" class="nav-item" style="color:var(--cyan);background:rgba(6,182,212,0.08);border-color:rgba(6,182,212,0.25);">
                     <span>👑</span> Owner Command Center
                 </a>
             </div>
             {% endif %}
 
+            <!-- User Badge -->
             <div class="sidebar-user">
                 {% if user.picture %}
-                <img src="{{ user.picture }}" alt="{{ user.name }}" class="user-avatar" style="object-fit:cover;border:1px solid rgba(201,169,110,0.3);">
+                <img src="{{ user.picture }}" alt="{{ user.name }}" class="avatar">
                 {% else %}
-                <div class="user-avatar">{{ (user.name or user.email or 'U')[0].upper() }}</div>
+                <div class="avatar">{{ (user.name or user.email or 'U')[0].upper() }}</div>
                 {% endif %}
-                <div class="user-info">
+                <div class="user-details">
                     <div class="user-name" title="{{ user.email }}">{{ user.name or 'My Account' }}</div>
-                    <div class="user-status" style="font-size:10.5px;">{{ '👑 Platform Owner' if is_owner else 'Connected' }}</div>
+                    <div class="user-role">{{ '👑 Platform Owner' if is_owner else '● Connected' }}</div>
                 </div>
-                <a href="/disconnect" class="disconnect-btn" title="Disconnect">✕</a>
+                <a href="/disconnect" style="color:var(--text-muted);text-decoration:none;font-size:14px;padding:4px;" title="Sign Out">✕</a>
             </div>
         </aside>
 
         <!-- Main Content -->
-        <div class="main">
-            <div class="topbar">
-                <h1 class="page-title">Inbox Intelligence</h1>
-                <button class="run-btn" id="runBtn" onclick="runAgent()">
-                    ▶&ensp;Run Agent
-                </button>
-            </div>
+        <main class="main">
+            <header class="topbar">
+                <div class="live-status-pill">
+                    <div class="pulse-dot"></div>
+                    <span>Autonomous Engine Active</span>
+                    <span style="font-family:'JetBrains Mono',monospace;color:var(--text-muted);font-size:11px;">• auto-syncing</span>
+                </div>
+
+                <div class="action-cluster">
+                    <div style="font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">
+                        Next scan: <span id="countdown">15</span>s
+                    </div>
+                    <button class="btn-sync" id="syncBtn" onclick="triggerManualSync()">
+                        <span>⚡</span> Force Sync
+                    </button>
+                </div>
+            </header>
 
             <div class="content">
-                <!-- Stats -->
-                <div class="stats-bar" id="statsBar">
-                    <div class="stat-cell">
-                        <div class="stat-label">Total Received</div>
-                        <div class="stat-value gold" id="statTotal">—</div>
-                        <div class="stat-sub">emails</div>
+                <!-- Metrics -->
+                <div class="metrics-grid">
+                    <div class="m-card">
+                        <div class="m-label">Total Emails Triaged</div>
+                        <div class="m-val" id="metricTotal">—</div>
+                        <div class="m-sub">inbox messages</div>
                     </div>
-                    <div class="stat-cell" id="statRepliesCell" style="cursor:pointer;" onclick="openRepliesModal()" title="Click to see sent replies">
-                        <div class="stat-label">Replies Sent</div>
-                        <div class="stat-value" id="statReplies">—</div>
-                        <div class="stat-sub">click to view ↗</div>
+                    <div class="m-card">
+                        <div class="m-label">Draft Replies Generated</div>
+                        <div class="m-val" id="metricReplies" style="color:var(--emerald);">—</div>
+                        <div class="m-sub">ready in Gmail Drafts</div>
                     </div>
-                    <div class="stat-cell">
-                        <div class="stat-label">Priority</div>
-                        <div class="stat-value" id="statPriority">—</div>
-                        <div class="stat-sub">high-priority</div>
+                    <div class="m-card">
+                        <div class="m-label">High-Priority Detected</div>
+                        <div class="m-val" id="metricHigh" style="color:var(--amber);">—</div>
+                        <div class="m-sub">urgent action items</div>
                     </div>
-                    <div class="stat-cell">
-                        <div class="stat-label">Agent Status</div>
-                        <div class="stat-value" id="statAgentStatus" style="font-size:18px;">—</div>
-                        <div class="stat-sub" id="statLastPoll">running 24/7</div>
+                    <div class="m-card">
+                        <div class="m-label">Spam & Phishing Blocked</div>
+                        <div class="m-val" id="metricSpam" style="color:var(--rose);">—</div>
+                        <div class="m-sub">deflected automatically</div>
                     </div>
                 </div>
 
-                <!-- Output -->
-                <div class="output-area">
-                    <div class="output-header">
-                        <div class="output-dot" id="outputDot"></div>
-                        <span class="output-header-title" id="outputHeaderTitle">Awaiting Run</span>
+                <!-- Feed Container -->
+                <div class="feed-container">
+                    <div class="feed-header">
+                        <div class="feed-title">Live Autonomous Activity Stream</div>
+                        <div class="feed-controls">
+                            <input type="text" class="search-input" id="searchInput" placeholder="Filter by subject or sender..." oninput="filterEmails()">
+                        </div>
                     </div>
 
-                    <!-- Empty state -->
-                    <div class="output-empty" id="emptyState">
-                        <div class="output-empty-icon">✦</div>
-                        <div class="output-empty-title">No emails processed yet</div>
-                        <div class="output-empty-sub">Click "Run Agent" to analyze your inbox</div>
+                    <div class="email-list" id="emailList">
+                        <div style="padding: 40px; text-align: center; color: var(--text-muted);">
+                            Analyzing inbox stream...
+                        </div>
                     </div>
-
-                    <!-- Processing state -->
-                    <div class="processing-state" id="processingState">
-                        <div class="pulse-ring"></div>
-                        <div class="processing-text">Analyzing your inbox&hellip;</div>
-                        <div class="processing-sub" id="processingStep">Connecting to Gmail</div>
-                    </div>
-
-                    <!-- Email list -->
-                    <div class="email-list" id="emailList" style="display:none;"></div>
                 </div>
             </div>
-        </div>
+        </main>
     </div>
 
-    <!-- Replies modal -->
-    <div id="repliesModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:50; align-items:center; justify-content:center;" onclick="if(event.target===this)closeRepliesModal()">
-        <div style="background:var(--surface); border:1px solid var(--border); width:min(720px,90vw); max-height:80vh; overflow-y:auto; border-radius:4px;">
-            <div style="padding:20px 24px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--surface);">
-                <h2 style="font-family:'Cormorant Garamond',serif; font-size:22px; font-weight:400; color:var(--text-primary);">Sent Replies</h2>
-                <span style="cursor:pointer; color:var(--text-muted); font-size:20px;" onclick="closeRepliesModal()">✕</span>
-            </div>
-            <div id="repliesModalBody" style="padding:8px 0;"></div>
+    <!-- Slide-over Drawer for Email Inspection -->
+    <div class="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+    <aside class="drawer" id="drawer">
+        <button class="drawer-close" onclick="closeDrawer()">✕</button>
+        <div style="margin-top: 12px; margin-bottom: 20px;">
+            <div id="drawerBadges" style="display:flex;gap:8px;margin-bottom:12px;"></div>
+            <h2 id="drawerSubject" style="font-family:'Outfit',sans-serif;font-size:22px;margin-bottom:8px;color:var(--text-main);"></h2>
+            <div id="drawerSender" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text-sub);"></div>
         </div>
-    </div>
+
+        <div style="border-top:1px solid var(--border);padding-top:18px;">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--cyan);margin-bottom:6px;">
+                NEXUS AI Triage Analysis
+            </div>
+            <p id="drawerAnalysis" style="font-size:13.5px;color:var(--text-sub);line-height:1.6;"></p>
+        </div>
+
+        <div id="drawerReplySection" style="margin-top:24px;border-top:1px solid var(--border);padding-top:18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+                <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.12em;color:var(--emerald);">
+                    Generated Response (Saved in Gmail Drafts)
+                </span>
+                <button onclick="copyReplyText()" style="background:none;border:none;color:var(--cyan);font-size:12px;cursor:pointer;font-weight:600;">
+                    Copy Text ⎘
+                </button>
+            </div>
+            <div class="reply-box" id="drawerReplyText"></div>
+            <a href="https://mail.google.com/mail/u/0/#drafts" target="_blank" style="display:inline-block;margin-top:12px;font-size:12.5px;color:var(--cyan);text-decoration:none;">
+                Open in Gmail Drafts ↗
+            </a>
+        </div>
+    </aside>
 
     <script>
-        // ── Live stats: load on page load + auto-refresh every 10s ──
-        async function loadStats() {
-            try {
-                const res = await fetch('/stats');
-                const data = await res.json();
-                document.getElementById('statTotal').textContent    = data.total_received ?? 0;
-                document.getElementById('statReplies').textContent  = data.replies_sent ?? 0;
-                document.getElementById('statPriority').textContent = data.high_priority ?? 0;
+        let allEmails = [];
+        let countdownSec = 15;
 
-                const statusEl = document.getElementById('statAgentStatus');
-                const pollEl   = document.getElementById('statLastPoll');
-                const status   = data.agent_status || 'idle';
-                statusEl.textContent = status === 'polling' ? 'Polling…' : (status.startsWith('error') ? 'Error' : 'Active');
-                statusEl.style.color = status.startsWith('error') ? '#F87171' : (status === 'polling' ? 'var(--gold)' : 'var(--green)');
-                pollEl.textContent = data.last_poll ? `last check: ${new Date(data.last_poll).toLocaleTimeString()}` : 'running 24/7';
-            } catch (e) { /* silent — keep last known values */ }
-        }
-        loadStats();
-        setInterval(loadStats, 10000);  // refresh every 10s — agent runs in background
+        // Auto-refresh timer countdown (continuous background sync)
+        setInterval(() => {
+            countdownSec--;
+            if (countdownSec <= 0) {
+                countdownSec = 15;
+                fetchLiveFeed(true);
+            }
+            const cdEl = document.getElementById('countdown');
+            if (cdEl) cdEl.textContent = countdownSec;
+        }, 1000);
 
-        async function openRepliesModal() {
-            const modal = document.getElementById('repliesModal');
-            const body  = document.getElementById('repliesModalBody');
-            modal.style.display = 'flex';
-            body.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text-muted);">Loading…</div>';
+        async function fetchLiveFeed(sync = false) {
             try {
-                const res = await fetch('/replies');
+                const url = sync ? '/api/live_feed?sync=1' : '/api/live_feed';
+                const res = await fetch(url);
+                if (!res.ok) return;
                 const data = await res.json();
-                if (!data.replies || data.replies.length === 0) {
-                    body.innerHTML = '<div style="padding:40px; text-align:center; color:var(--text-muted);">No replies sent yet</div>';
-                    return;
-                }
-                body.innerHTML = data.replies.map(r => `
-                    <div style="padding:18px 24px; border-bottom:1px solid var(--border);">
-                        <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:6px;">
-                            <span style="font-weight:500; color:var(--text-primary); font-size:14px;">${escHtml(r.subject)}</span>
-                            <span style="font-size:11px; color:var(--text-muted); white-space:nowrap;">${escHtml(r.received_at)}</span>
-                        </div>
-                        <div style="font-size:12px; color:var(--text-muted); margin-bottom:10px;">${escHtml(r.sender)}</div>
-                        <div style="background:var(--ink-2); border-left:2px solid var(--gold); padding:10px 14px; font-size:13px; color:var(--text-secondary); white-space:pre-wrap; line-height:1.5;">${escHtml(r.reply_text)}</div>
-                    </div>
-                `).join('');
-            } catch (e) {
-                body.innerHTML = '<div style="padding:40px; text-align:center; color:#F87171;">Failed to load replies</div>';
+                
+                // Update metrics
+                document.getElementById('metricTotal').textContent = data.stats.total || 0;
+                document.getElementById('metricReplies').textContent = data.stats.replies || 0;
+                document.getElementById('metricHigh').textContent = data.stats.high_priority || 0;
+                document.getElementById('metricSpam').textContent = data.stats.spam || 0;
+
+                allEmails = data.emails || [];
+                renderEmailList(allEmails);
+            } catch(e) {
+                console.error('Auto-refresh error:', e);
             }
         }
 
-        function closeRepliesModal() {
-            document.getElementById('repliesModal').style.display = 'none';
-        }
-
-        const processingSteps = [
-            'Connecting to Gmail',
-            'Fetching messages',
-            'Running AI classification',
-            'Evaluating priorities',
-            'Composing replies',
-            'Finalizing results'
-        ];
-        let stepIdx = 0, stepTimer = null;
-
-        function startProcessingAnimation() {
-            stepIdx = 0;
-            document.getElementById('processingStep').textContent = processingSteps[0];
-            stepTimer = setInterval(() => {
-                stepIdx = (stepIdx + 1) % processingSteps.length;
-                document.getElementById('processingStep').textContent = processingSteps[stepIdx];
-            }, 1800);
-        }
-
-        function stopProcessingAnimation() {
-            clearInterval(stepTimer);
-        }
-
-        async function runAgent() {
-            const btn = document.getElementById('runBtn');
-            btn.disabled = true;
-
-            // Show processing
-            document.getElementById('emptyState').style.display = 'none';
-            document.getElementById('emailList').style.display = 'none';
-            document.getElementById('processingState').classList.add('visible');
-            document.getElementById('outputDot').classList.add('live');
-            document.getElementById('outputHeaderTitle').textContent = 'Processing';
-            startProcessingAnimation();
-
-            try {
-                const res = await fetch('/run');
-                const data = await res.json();
-
-                stopProcessingAnimation();
-                document.getElementById('processingState').classList.remove('visible');
-
-                if (data.error) {
-                    document.getElementById('emptyState').style.display = 'block';
-                    document.getElementById('emptyState').innerHTML = `
-                        <div class="output-empty-icon" style="color:#F87171">✕</div>
-                        <div class="output-empty-title">Something went wrong</div>
-                        <div class="output-empty-sub" style="color:#F87171">${data.error}</div>
-                    `;
-                    document.getElementById('outputHeaderTitle').textContent = 'Error';
-                    document.getElementById('outputDot').classList.remove('live');
-                    document.getElementById('outputDot').style.background = '#F87171';
-                    return;
-                }
-
-                // Refresh persistent stats from DB (cumulative totals, not just this run)
-                loadStats();
-
-                // Build email rows
-                const list = document.getElementById('emailList');
-                list.innerHTML = '';
-                data.emails.forEach((e, i) => {
-                    const row = document.createElement('div');
-                    row.className = 'email-row';
-                    row.innerHTML = `
-                        <div class="email-left">
-                            <span class="email-index">${String(i+1).padStart(2,'0')}</span>
-                            <div class="email-meta">
-                                <div class="email-subject">${escHtml(e.subject)}</div>
-                                <div class="email-sender">${escHtml(e.sender)}</div>
-                            </div>
-                        </div>
-                        <div class="email-badges">
-                            <span class="badge badge-${e.classification}">${e.classification}</span>
-                            <span class="badge badge-${e.priority}">${e.priority}</span>
-                            ${e.reply_sent ? '<span class="badge badge-reply">replied</span>' : ''}
-                        </div>
-                    `;
-                    list.appendChild(row);
-                });
-
-                list.style.display = 'flex';
-                document.getElementById('outputHeaderTitle').textContent = `${data.total} Emails Processed`;
-                document.getElementById('outputDot').classList.remove('live');
-                document.getElementById('outputDot').style.background = '#4ADE80';
-
-            } catch(err) {
-                console.error('runAgent fetch failed:', err);
-                stopProcessingAnimation();
-                document.getElementById('processingState').classList.remove('visible');
-                document.getElementById('emptyState').style.display = 'block';
-                document.getElementById('emptyState').innerHTML = `
-                    <div class="output-empty-icon" style="color:#F87171">✕</div>
-                    <div class="output-empty-title">Connection failed</div>
-                    <div class="output-empty-sub">${escHtml(err.message || 'Please try again')}</div>
+        function renderEmailList(emails) {
+            const container = document.getElementById('emailList');
+            if (!emails.length) {
+                container.innerHTML = `
+                    <div style="padding: 60px 20px; text-align: center; color: var(--text-muted);">
+                        <div style="font-size:24px;margin-bottom:8px;">✦</div>
+                        <div style="font-weight:600;font-size:15px;color:var(--text-sub);">Inbox Synced & Up to Date</div>
+                        <div style="font-size:13px;margin-top:4px;">New incoming emails will automatically appear here.</div>
+                    </div>
                 `;
+                return;
+            }
+
+            container.innerHTML = emails.map((e, idx) => `
+                <div class="email-row" onclick="openDrawer(${idx})">
+                    <div class="email-main-info">
+                        <div class="email-subject">${escapeHtml(e.subject || '(No Subject)')}</div>
+                        <div class="email-sender">${escapeHtml(e.sender || 'unknown')}</div>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <span class="badge-tag ${e.priority === 'high' ? 'b-high' : (e.priority === 'medium' ? 'b-medium' : 'b-low')}">${e.priority || 'low'}</span>
+                        <span class="badge-tag" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">${e.classification || 'normal'}</span>
+                        ${e.reply_sent ? '<span class="badge-tag b-draft">✓ Drafted</span>' : ''}
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function openDrawer(index) {
+            const email = allEmails[index];
+            if (!email) return;
+
+            document.getElementById('drawerSubject').textContent = email.subject;
+            document.getElementById('drawerSender').textContent = 'From: ' + email.sender;
+            
+            const badges = document.getElementById('drawerBadges');
+            badges.innerHTML = `
+                <span class="badge-tag ${email.priority === 'high' ? 'b-high' : 'b-medium'}">${email.priority} Priority</span>
+                <span class="badge-tag" style="background:rgba(255,255,255,0.08);color:var(--text-sub);">${email.classification}</span>
+            `;
+
+            document.getElementById('drawerAnalysis').textContent = 
+                `Classified as ${email.classification.toUpperCase()} with ${email.priority.toUpperCase()} urgency priority. Action timestamp: ${email.received_at || 'Just now'}.`;
+
+            const replySection = document.getElementById('drawerReplySection');
+            if (email.reply_sent && email.reply_text) {
+                replySection.style.display = 'block';
+                document.getElementById('drawerReplyText').textContent = email.reply_text;
+            } else {
+                replySection.style.display = 'none';
+            }
+
+            document.getElementById('drawerOverlay').classList.add('active');
+            document.getElementById('drawer').classList.add('active');
+        }
+
+        function closeDrawer() {
+            document.getElementById('drawerOverlay').classList.remove('active');
+            document.getElementById('drawer').classList.remove('active');
+        }
+
+        function copyReplyText() {
+            const txt = document.getElementById('drawerReplyText').textContent;
+            navigator.clipboard.writeText(txt);
+            alert('Reply copied to clipboard!');
+        }
+
+        function filterEmails() {
+            const q = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = allEmails.filter(e => 
+                (e.subject || '').toLowerCase().includes(q) || 
+                (e.sender || '').toLowerCase().includes(q)
+            );
+            renderEmailList(filtered);
+        }
+
+        async function triggerManualSync() {
+            const btn = document.getElementById('syncBtn');
+            btn.disabled = true;
+            btn.innerHTML = 'Scanning...';
+            try {
+                countdownSec = 15;
+                await fetchLiveFeed(true);
             } finally {
                 btn.disabled = false;
+                btn.innerHTML = '<span>⚡</span> Force Sync';
             }
         }
 
-        function escHtml(str) {
-            const d = document.createElement('div');
-            d.textContent = str;
-            return d.innerHTML;
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
         }
+
+        // Initial load on start — immediately fetches and synchronizes new incoming emails
+        fetchLiveFeed(true);
     </script>
 </body>
 </html>
 """
 
-
-ADMIN_PAGE = """
-<!DOCTYPE html>
+# ══════════════════════════════════════════════════════════════════════════════
+# 3. OWNER / ADMIN PORTAL (Executive Platform Governance)
+# ══════════════════════════════════════════════════════════════════════════════
+ADMIN_PAGE = """<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Owner Command Center — Aura</title>
+    <title>NEXUS — Owner Command Center</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Sans:wght@300;400;500;700&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
         :root {
-            --gold: #C9A96E;
-            --gold-light: #E8D5B0;
-            --ink: #0A0A0A;
-            --ink-2: #111111;
-            --surface: #141414;
-            --surface-2: #1E1E1E;
-            --surface-3: #252525;
-            --border: rgba(201,169,110,0.15);
-            --text-primary: #F0EDE8;
-            --text-secondary: #9A9189;
-            --text-muted: #5C5650;
-            --green: #4ADE80;
-            --red: #F87171;
-            --amber: #FBBF24;
+            --bg-void: #06080F;
+            --surface-1: #0D111D;
+            --surface-2: #141A2D;
+            --accent: #6366F1;
+            --cyan: #06B6D4;
+            --emerald: #10B981;
+            --amber: #F59E0B;
+            --rose: #F43F5E;
+            --border: rgba(99, 102, 241, 0.16);
+            --text-main: #F8FAFC;
+            --text-sub: #94A3B8;
+            --text-muted: #64748B;
         }
         body {
-            font-family: 'DM Sans', sans-serif;
-            background: var(--ink);
-            color: var(--text-primary);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background: var(--bg-void);
+            color: var(--text-main);
             min-height: 100vh;
             padding: 32px 48px;
         }
@@ -1531,293 +1454,189 @@ ADMIN_PAGE = """
             border-bottom: 1px solid var(--border);
             margin-bottom: 32px;
         }
-        .header-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 32px;
-            font-weight: 500;
-            letter-spacing: 0.04em;
+        .brand-title {
+            font-family: 'Outfit', sans-serif;
+            font-size: 26px;
+            font-weight: 700;
         }
-        .header-title span { color: var(--gold); }
-        .header-actions {
-            display: flex;
-            align-items: center;
-            gap: 16px;
-        }
-        .btn {
-            padding: 8px 16px;
-            border-radius: 3px;
+        .btn-link {
+            padding: 8px 18px;
+            border-radius: 6px;
             font-size: 13px;
+            font-weight: 600;
             text-decoration: none;
-            cursor: pointer;
-            transition: all 0.2s;
+            background: var(--surface-2);
+            color: var(--text-main);
             border: 1px solid var(--border);
-            color: var(--text-primary);
-            background: var(--surface);
+            transition: all 0.2s;
         }
-        .btn-gold {
-            background: var(--gold);
-            color: var(--ink);
-            font-weight: 500;
-            border-color: var(--gold);
-        }
-        .btn:hover { opacity: 0.9; }
-
-        /* Stats Grid */
-        .stats-grid {
+        .btn-link:hover { border-color: var(--cyan); }
+        .grid-4 {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
             gap: 20px;
             margin-bottom: 36px;
         }
-        .stat-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 24px;
-            border-radius: 4px;
-        }
-        .stat-label {
-            font-size: 10px;
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            color: var(--text-muted);
-            margin-bottom: 10px;
-        }
-        .stat-val {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 38px;
-            font-weight: 500;
-            color: var(--gold);
-        }
-        .stat-sub {
-            font-size: 11px;
-            color: var(--text-secondary);
-            margin-top: 4px;
-        }
-
-        /* Section Cards */
         .card {
-            background: var(--surface);
+            background: var(--surface-1);
             border: 1px solid var(--border);
-            border-radius: 4px;
-            margin-bottom: 32px;
-            overflow: hidden;
+            border-radius: 12px;
+            padding: 22px 24px;
         }
-        .card-header {
+        .card-table {
+            background: var(--surface-1);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 32px;
+        }
+        .table-header {
             padding: 18px 24px;
             border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
             justify-content: space-between;
-        }
-        .card-title {
-            font-family: 'Cormorant Garamond', serif;
-            font-size: 20px;
-            font-weight: 500;
-        }
-        .badge {
-            font-size: 9px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 17px;
             font-weight: 600;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            padding: 3px 8px;
-            border-radius: 2px;
         }
-        .badge-owner { background: rgba(201,169,110,0.15); color: var(--gold); border: 1px solid rgba(201,169,110,0.3); }
-        .badge-user { background: rgba(255,255,255,0.06); color: var(--text-secondary); border: 1px solid var(--border); }
-        .badge-green { background: rgba(74,222,128,0.12); color: var(--green); border: 1px solid rgba(74,222,128,0.2); }
-
-        /* Tables */
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12.5px;
-        }
-        th {
-            text-align: left;
-            padding: 12px 20px;
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.14em;
-            color: var(--text-muted);
-            border-bottom: 1px solid var(--border);
-            background: var(--ink-2);
-        }
-        td {
-            padding: 14px 20px;
-            border-bottom: 1px solid rgba(201,169,110,0.08);
-            color: var(--text-primary);
-        }
+        table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        th { text-align: left; padding: 12px 24px; font-size: 11px; text-transform: uppercase; color: var(--text-muted); background: var(--surface-2); }
+        td { padding: 14px 24px; border-bottom: 1px solid rgba(99,102,241,0.06); }
         tr:last-child td { border-bottom: none; }
-        tr:hover td { background: rgba(255,255,255,0.015); }
-        .user-cell {
-            display: flex;
-            align-items: center;
-            gap: 10px;
+        .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-sub); }
+        .badge {
+            padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase;
         }
-        .avatar-sm {
-            width: 26px;
-            height: 26px;
-            border-radius: 50%;
-            background: rgba(201,169,110,0.15);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 11px;
-            color: var(--gold);
-            font-weight: 600;
-        }
-        .mono { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-secondary); }
+        .b-owner { background: rgba(99,102,241,0.2); color: #C7D2FE; border: 1px solid var(--accent); }
     </style>
 </head>
 <body>
     <header class="header">
         <div>
-            <div class="header-title">A<span>u</span>ra — Owner Command Center</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
-                Administrator Portal  •  Connected as Owner: <span style="color:var(--gold);">{{ owner.email }}</span>
+            <div class="brand-title">👑 NEXUS Platform Owner Command Center</div>
+            <div style="font-size:12.5px;color:var(--text-sub);margin-top:4px;">
+                Administrator: <span style="color:var(--cyan);font-weight:600;">{{ owner.email }}</span>
             </div>
         </div>
-        <div class="header-actions">
-            <a href="/dashboard" class="btn btn-gold">← Return to My Dashboard</a>
-            <a href="/disconnect" class="btn">Log Out</a>
+        <div style="display:flex;gap:12px;">
+            <a href="/dashboard" class="btn-link">← Return to Dashboard</a>
+            <a href="/disconnect" class="btn-link" style="color:var(--rose);">Log Out</a>
         </div>
     </header>
 
-    <!-- Global Metrics Grid -->
-    <div class="stats-grid">
-        <div class="stat-card">
-            <div class="stat-label">Total Registered Users</div>
-            <div class="stat-val">{{ total_users }}</div>
-            <div class="stat-sub">Accounts connected</div>
+    <div class="grid-4">
+        <div class="card">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Registered Users</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;">{{ total_users }}</div>
+            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Connected accounts</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-label">Platform Emails Triaged</div>
-            <div class="stat-val">{{ total_emails }}</div>
-            <div class="stat-sub">Across all user inboxes</div>
+        <div class="card">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Platform Emails Triaged</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;color:var(--cyan);">{{ total_emails }}</div>
+            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Total analyzed</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-label">AI Replies Generated</div>
-            <div class="stat-val">{{ total_replies }}</div>
-            <div class="stat-sub">Automated drafts & sends</div>
+        <div class="card">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">AI Replies Prepared</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;color:var(--emerald);">{{ total_replies }}</div>
+            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Drafts & sends</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-label">Spam Blocked</div>
-            <div class="stat-val">{{ total_spam }}</div>
-            <div class="stat-sub">Malicious & phishing emails</div>
+        <div class="card">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;margin-bottom:8px;">Spam Blocked</div>
+            <div style="font-family:'Outfit',sans-serif;font-size:32px;font-weight:700;color:var(--rose);">{{ total_spam }}</div>
+            <div style="font-size:12px;color:var(--text-sub);margin-top:4px;">Shielded</div>
         </div>
     </div>
 
-    <!-- Registered Users Table -->
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">Registered Users Directory</div>
-            <span class="badge badge-green">{{ users|length }} Active Accounts</span>
+    <!-- Registered Users -->
+    <div class="card-table">
+        <div class="table-header">
+            <span>Registered Users Directory</span>
+            <span style="font-size:12px;color:var(--emerald);font-weight:600;">● Active Deployment</span>
         </div>
         <table>
             <thead>
                 <tr>
                     <th>User</th>
-                    <th>Email Address</th>
+                    <th>Email</th>
                     <th>Role</th>
-                    <th>Reply Safety Mode</th>
-                    <th>Joined</th>
-                    <th>Last Active</th>
+                    <th>Reply Mode</th>
+                    <th>Connected At</th>
                 </tr>
             </thead>
             <tbody>
                 {% for u in users %}
                 <tr>
-                    <td>
-                        <div class="user-cell">
-                            {% if u.picture %}
-                            <img src="{{ u.picture }}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">
-                            {% else %}
-                            <div class="avatar-sm">{{ (u.name or u.email or 'U')[0].upper() }}</div>
-                            {% endif %}
-                            <span style="font-weight:500;">{{ u.name or 'Anonymous User' }}</span>
-                        </div>
-                    </td>
+                    <td style="font-weight:600;">{{ u.name or 'User' }}</td>
                     <td class="mono">{{ u.email }}</td>
                     <td>
-                        {% if u.role == 'owner' or u.email == owner.email %}
-                        <span class="badge badge-owner">👑 Owner</span>
+                        {% if u.email == owner.email or u.role == 'owner' %}
+                        <span class="badge b-owner">👑 Owner</span>
                         {% else %}
-                        <span class="badge badge-user">User</span>
+                        <span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">User</span>
                         {% endif %}
                     </td>
-                    <td><span class="mono">{{ u.reply_mode or 'draft' }}</span></td>
+                    <td class="mono">{{ u.reply_mode or 'draft' }}</td>
                     <td class="mono">{{ (u.connected_at or '—')[:16] }}</td>
-                    <td class="mono">{{ (u.last_active or '—')[:16] }}</td>
                 </tr>
                 {% else %}
-                <tr>
-                    <td colspan="6" style="text-align:center;padding:30px;color:var(--text-muted);">No users registered yet.</td>
-                </tr>
+                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:30px;">No registered users yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
-    <!-- Live Platform Activity Stream -->
-    <div class="card">
-        <div class="card-header">
-            <div class="card-title">Live Platform Activity Stream</div>
-            <span style="font-size:11px;color:var(--text-muted);font-family:'DM Mono',monospace;">Last 15 triage actions platform-wide</span>
+    <!-- Global Activity Stream -->
+    <div class="card-table">
+        <div class="table-header">
+            <span>Live Platform Activity Stream (Last 15 Actions)</span>
+            <span style="font-size:12px;color:var(--text-muted);font-family:'JetBrains Mono',monospace;">Engine: {{ llm_model }}</span>
         </div>
         <table>
             <thead>
                 <tr>
-                    <th>User</th>
+                    <th>Account</th>
                     <th>Sender</th>
                     <th>Subject</th>
                     <th>Classification</th>
                     <th>Priority</th>
-                    <th>Reply Action</th>
-                    <th>Time</th>
+                    <th>Status</th>
                 </tr>
             </thead>
             <tbody>
-                {% for act in activity %}
+                {% for a in activity %}
                 <tr>
-                    <td class="mono" style="color:var(--gold);">{{ act.user_email }}</td>
-                    <td class="mono">{{ (act.sender or '')[:28] }}</td>
-                    <td style="max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ act.subject }}</td>
-                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">{{ act.classification }}</span></td>
-                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-secondary);">{{ act.priority }}</span></td>
+                    <td class="mono" style="color:var(--cyan);">{{ a.user_email }}</td>
+                    <td class="mono">{{ (a.sender or '')[:24] }}</td>
+                    <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ a.subject }}</td>
+                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">{{ a.classification }}</span></td>
+                    <td><span class="badge" style="background:rgba(255,255,255,0.06);color:var(--text-sub);">{{ a.priority }}</span></td>
                     <td>
-                        {% if act.reply_sent %}
-                        <span class="badge badge-green">✓ {{ act.status or 'Replied' }}</span>
+                        {% if a.reply_sent %}
+                        <span style="color:var(--emerald);font-weight:600;font-size:12px;">✓ {{ a.status or 'Drafted' }}</span>
                         {% else %}
-                        <span style="color:var(--text-muted);font-size:11px;">No reply</span>
+                        <span style="color:var(--text-muted);font-size:12px;">Classified</span>
                         {% endif %}
                     </td>
-                    <td class="mono">{{ (act.received_at or '')[:16] }}</td>
                 </tr>
                 {% else %}
-                <tr>
-                    <td colspan="7" style="text-align:center;padding:30px;color:var(--text-muted);">No emails triaged yet.</td>
-                </tr>
+                <tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:30px;">No triage stream yet.</td></tr>
                 {% endfor %}
             </tbody>
         </table>
-    </div>
-
-    <!-- System Health -->
-    <div class="card" style="padding:20px 24px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <div style="font-size:11px;letter-spacing:0.12em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">Core Intelligence Engine</div>
-            <div style="font-size:13px;color:var(--gold);">LLM Model: {{ llm_model }}  •  Status: Operational (Ready for Public Traffic)</div>
-        </div>
-        <span class="badge badge-green">● All Systems Online</span>
     </div>
 </body>
 </html>
 """
 
-# ── Routes ─────────────────────────────────────────────────
+# ══════════════════════════════════════════════════════════════════════════════
+# 4. ROUTES & API ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
 
 @app.route("/")
 def index():
+    if 'credentials' in session and 'user' in session:
+        return redirect(url_for('dashboard'))
     return HOME_PAGE
 
 
@@ -1834,7 +1653,6 @@ def connect():
         prompt='consent'
     )
     session['state'] = state
-    # Save the code_verifier so the callback can complete the PKCE exchange
     session['code_verifier'] = flow.code_verifier
     return redirect(auth_url)
 
@@ -1847,7 +1665,6 @@ def callback():
         state=session['state'],
         redirect_uri=url_for('callback', _external=True)
     )
-    # Restore the PKCE code_verifier from the session
     flow.code_verifier = session.get('code_verifier')
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
@@ -1860,12 +1677,10 @@ def callback():
         'scopes': list(creds.scopes)
     }
     session.permanent = True
-    import time as _t
-    connected_at = int(_t.time())
+    connected_at = int(_time.time())
     session['connected_at'] = connected_at
-    session['seen_ids'] = []
 
-    # ── Fetch user profile from Gmail & OAuth userinfo ──
+    # Discover user identity
     user_email = ""
     user_name  = ""
     user_pic   = ""
@@ -1874,7 +1689,7 @@ def callback():
         prof = gmail_service.users().getProfile(userId='me').execute()
         user_email = prof.get('emailAddress', '').lower()
     except Exception as e:
-        print(f"Notice: Gmail profile fetch: {e}")
+        print(f"Notice: Gmail profile: {e}")
 
     try:
         oauth_service = build('oauth2', 'v2', credentials=creds)
@@ -1898,7 +1713,6 @@ def callback():
         'reply_mode': 'draft'
     }
 
-    # Register/update user record in database
     with _db() as conn:
         conn.execute("""
             INSERT INTO users (email, name, picture, role, reply_mode, connected_at, last_active)
@@ -1910,9 +1724,10 @@ def callback():
         """, (user_email, user_name, user_pic, role))
         conn.commit()
 
-    # ── Activate background agent ──
+    # Activate autonomous background polling loop
     with _agent_lock:
         _agent_state["credentials"]  = dict(session['credentials'])
+        _agent_state["user_info"]    = dict(session['user'])
         _agent_state["connected_at"] = connected_at
         _agent_state["running"]      = True
 
@@ -1944,10 +1759,10 @@ def dashboard():
         }
         session['user'] = user
 
-    # Re-activate background agent if Flask restarted
     with _agent_lock:
         if not _agent_state.get("credentials"):
             _agent_state["credentials"]  = dict(session['credentials'])
+            _agent_state["user_info"]    = dict(user)
             _agent_state["connected_at"] = session.get('connected_at', 0)
             _agent_state["running"]      = True
 
@@ -1957,7 +1772,6 @@ def dashboard():
 
 @app.route("/admin")
 def admin_portal():
-    """Owner & Platform Administrator Control Center."""
     user = session.get('user')
     if not user:
         return redirect(url_for('index'))
@@ -1966,7 +1780,7 @@ def admin_portal():
         <div style="font-family:sans-serif;text-align:center;margin-top:120px;color:#F87171;">
             <h1 style="font-size:32px;">403 Forbidden: Owner Access Required</h1>
             <p style="color:#9A9189;margin-top:8px;">Only the platform owner can access the Administrator Command Center.</p>
-            <p><a href="/dashboard" style="color:#C9A96E;text-decoration:none;font-weight:600;">← Return to My Dashboard</a></p>
+            <p><a href="/dashboard" style="color:#6366F1;text-decoration:none;font-weight:600;">← Return to Dashboard</a></p>
         </div>
         """, 403
 
@@ -1995,42 +1809,77 @@ def admin_portal():
     )
 
 
-@app.route("/api/settings", methods=["GET", "POST"])
-def user_settings():
-    """View or update user reply mode (draft vs send) and signature."""
-    user = session.get('user')
-    if not user or not user.get('email'):
-        return {"error": "Not authenticated"}, 401
+@app.route("/api/live_feed")
+def live_feed():
+    """Real-time live feed API polled automatically by frontend every 5-15 seconds."""
+    _ensure_background_thread()
+    user = session.get('user', {})
+    user_email = user.get('email', '').lower()
+    if not user_email:
+        return jsonify({"error": "Not authenticated"}), 401
 
-    user_email = user['email']
-    if request.method == "POST":
-        data = request.get_json(silent=True) or request.form
-        reply_mode = data.get("reply_mode", user.get("reply_mode", "draft"))
-        signature  = data.get("signature", user.get("signature", ""))
+    # Keep background state synchronized with current session credentials
+    if 'credentials' in session:
+        with _agent_lock:
+            if not _agent_state.get("credentials"):
+                _agent_state["credentials"]  = dict(session['credentials'])
+                _agent_state["user_info"]    = dict(user)
+                _agent_state["connected_at"] = session.get('connected_at', 0)
+                _agent_state["running"]      = True
+
+    # If requested via sync=1, immediately check for new unread inbox messages
+    if request.args.get('sync') == '1' and 'credentials' in session:
+        creds_dict   = dict(session['credentials'])
+        connected_at = session.get('connected_at', 0)
+        reply_mode   = user.get('reply_mode', 'draft')
+        with _agent_lock:
+            can_sync = (_agent_state.get("status") == "idle")
+            if can_sync:
+                _agent_state["status"]    = "polling"
+                _agent_state["last_poll"] = datetime.now().isoformat(timespec='seconds')
+        if can_sync:
+            try:
+                _process_inbox(creds_dict, connected_at, user_info=user, reply_mode=reply_mode)
+            except Exception as e:
+                print(f"Sync check notice: {e}")
+            finally:
+                with _agent_lock:
+                    _agent_state["status"] = "idle"
+
+    with _db() as conn:
+        total     = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
+        replies   = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ? AND reply_sent=1", (user_email,)).fetchone()[0]
+        high_pri  = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ? AND priority='high'", (user_email,)).fetchone()[0]
+        spam      = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ? AND classification='spam'", (user_email,)).fetchone()[0]
         
-        session['user']['reply_mode'] = reply_mode
-        session['user']['signature']  = signature
+        rows = conn.execute("""
+            SELECT id, subject, sender, received_at, classification, priority, reply_sent, reply_text, status
+            FROM processed_emails
+            WHERE user_email = ?
+            ORDER BY rowid DESC
+            LIMIT 40
+        """, (user_email,)).fetchall()
 
-        with _db() as conn:
-            conn.execute("""
-                UPDATE users SET reply_mode = ?, signature = ?, last_active = datetime('now')
-                WHERE email = ?
-            """, (reply_mode, signature, user_email))
-            conn.commit()
+    with _agent_lock:
+        status    = _agent_state.get("status", "idle")
+        last_poll = _agent_state.get("last_poll")
 
-        return {"status": "success", "reply_mode": reply_mode, "signature": signature}
-
-    return {
-        "email": user_email,
-        "name": user.get("name", ""),
-        "reply_mode": user.get("reply_mode", "draft"),
-        "signature": user.get("signature", "")
-    }
+    return jsonify({
+        "stats": {
+            "total": total,
+            "replies": replies,
+            "high_priority": high_pri,
+            "spam": spam,
+            "agent_status": status,
+            "last_poll": last_poll
+        },
+        "emails": [dict(r) for r in rows]
+    })
 
 
 @app.route("/run")
 def run_agent():
-    """Manual trigger — isolated per authenticated user."""
+    """Manual on-demand trigger."""
     if 'credentials' not in session:
         return {"error": "Not connected"}, 401
 
@@ -2042,31 +1891,19 @@ def run_agent():
         reply_mode   = user.get('reply_mode', 'draft')
 
         with _db() as conn:
-            if user_email:
-                before_count = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
-            else:
-                before_count = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
+            before_count = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
 
         _process_inbox(creds_dict, connected_at, user_info=user, reply_mode=reply_mode)
 
         with _db() as conn:
-            if user_email:
-                after_count = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
-                rows = conn.execute("""
-                    SELECT subject, sender, classification, priority, reply_sent, status
-                    FROM processed_emails
-                    WHERE user_email = ?
-                    ORDER BY rowid DESC
-                    LIMIT ?
-                """, (user_email, max(1, after_count - before_count))).fetchall()
-            else:
-                after_count = conn.execute("SELECT COUNT(*) FROM processed_emails").fetchone()[0]
-                rows = conn.execute("""
-                    SELECT subject, sender, classification, priority, reply_sent, status
-                    FROM processed_emails
-                    ORDER BY rowid DESC
-                    LIMIT ?
-                """, (max(1, after_count - before_count),)).fetchall()
+            after_count = conn.execute("SELECT COUNT(*) FROM processed_emails WHERE user_email = ?", (user_email,)).fetchone()[0]
+            rows = conn.execute("""
+                SELECT subject, sender, classification, priority, reply_sent, status
+                FROM processed_emails
+                WHERE user_email = ?
+                ORDER BY rowid DESC
+                LIMIT ?
+            """, (user_email, max(1, after_count - before_count))).fetchall()
 
         emails = [{
             "subject": r["subject"],
@@ -2145,6 +1982,7 @@ def replies():
 def disconnect():
     with _agent_lock:
         _agent_state["credentials"]  = None
+        _agent_state["user_info"]    = None
         _agent_state["connected_at"] = 0
         _agent_state["running"]      = False
         _agent_state["status"]       = "idle"
