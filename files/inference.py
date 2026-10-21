@@ -23,6 +23,13 @@ import time
 from dataclasses import asdict
 from typing import Any, Dict, List, Optional
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 import openai
 from dotenv import load_dotenv
 
@@ -30,6 +37,9 @@ from env.environment import EmailTriageEnv, Action
 from env.tasks import list_tasks
 
 # Load environment variables from .env file
+env_file = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(env_file):
+    load_dotenv(env_file)
 load_dotenv()
 
 

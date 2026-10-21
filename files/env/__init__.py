@@ -1,9 +1,10 @@
-"""AI Email Triage – environment package."""
+"""
+AI Email Triage System package.
+"""
 
 from .environment import EmailTriageEnv, Observation, Action, EnvironmentState
 from .tasks import TASKS, get_task, list_tasks
-from .grader import grade_task1, grade_task2, grade_task3
-from .dataset import EMAIL_DATASET
+from .dataset import EMAIL_DATASET, get_email_by_id, get_emails_by_type
 
 __all__ = [
     "EmailTriageEnv",
@@ -14,7 +15,6 @@ __all__ = [
     "get_task",
     "list_tasks",
     "EMAIL_DATASET",
-    "grade_task1",
-    "grade_task2",
-    "grade_task3",
+    "get_email_by_id",
+    "get_emails_by_type",
 ]
